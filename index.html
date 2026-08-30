@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#10170f">
+<title>Il Quaderno di Micelio · MUSHROOM</title>
+<meta name="description" content="MUSHROOM, il quaderno del bosco. Pioggia, temperatura, territorio e memoria delle tue fungaie.">
+<style>
+:root{--bg:#10170f;--panel:#172217;--ink:#f0ead8;--muted:#a9b49a;--line:#31402f;--accent:#d9c28f;--green:#253c29}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,sans-serif;line-height:1.55}a{color:inherit}
+.wrap{width:min(1100px,calc(100% - 36px));margin:auto}nav{height:70px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
+.brand{font-family:Georgia,serif;font-weight:700}.brand small{display:block;font-size:10px;letter-spacing:.15em;color:var(--muted);font-weight:400}
+.hero{min-height:calc(100vh - 70px);display:grid;grid-template-columns:1.08fr .92fr;gap:50px;align-items:center;padding:50px 0 70px}
+.eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);font-weight:800}
+h1{font-family:Georgia,serif;font-size:clamp(54px,8vw,100px);line-height:.9;margin:15px 0 18px;letter-spacing:-.04em}
+h1 span{display:block;font-size:.31em;color:var(--accent);margin-top:18px;letter-spacing:0}
+.lead{font-family:Georgia,serif;font-size:clamp(20px,2.2vw,29px);line-height:1.3;max-width:720px}.sub{color:var(--muted);max-width:650px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin:28px 0 16px}.btn{border:1px solid var(--accent);padding:13px 19px;border-radius:999px;text-decoration:none;font-weight:800;font-size:13px;background:var(--accent);color:#142016;cursor:pointer}.btn.alt{background:transparent;color:var(--ink);border-color:var(--line)}
+.trust{font-size:12px;color:var(--muted)}.visual{display:flex;justify-content:center}.visual img{width:min(430px,100%);filter:drop-shadow(0 28px 38px rgba(0,0,0,.4))}
+#help{display:none;margin-top:14px;padding:13px;border:1px solid var(--line);border-radius:11px;background:var(--panel);font-size:13px;color:#c5cfbd}
+.quote{border-top:1px solid var(--line);padding:65px 0;text-align:center}.quote blockquote{font-family:Georgia,serif;font-size:clamp(26px,4vw,46px);line-height:1.15;max-width:850px;margin:auto}
+footer{border-top:1px solid var(--line);padding:25px 0 40px;color:var(--muted);font-size:12px}
+@media(max-width:780px){.hero{grid-template-columns:1fr}.visual{order:-1}.visual img{width:240px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav><div class="brand">Il Quaderno di Micelio<small>MUSHROOM · IL QUADERNO DEL BOSCO</small></div></nav>
+<section class="hero">
+<div>
+<div class="eyebrow">Per chi entra nel bosco</div>
+<h1>MUSHROOM<span>Il quaderno del bosco.</span></h1>
+<p class="lead">Non ti dice dove sono i funghi. Ti aiuta a capire quando vale la pena cercarli.</p>
+<p class="sub">Pioggia, temperatura, territorio e memoria delle tue fungaie. Un'indicazione ambientale, mai una promessa di presenza o commestibilità.</p>
+<div class="actions">
+<a class="btn" href="./app/index.html">Apri MUSHROOM</a>
+<button class="btn alt" id="installBtn" type="button">Installa l'app</button>
+</div>
+<div class="trust">Gratuita · Nessun account · Fungaie personali sul dispositivo</div>
+<div id="help"></div>
+</div>
+<div class="visual"><img src="./app/icons/icon-512.png" alt="MUSHROOM"></div>
+</section>
+</div>
+<section class="quote"><div class="wrap"><blockquote>“Non guardare il cielo di oggi. Guarda quello di dieci giorni fa.”</blockquote></div></section>
+<div class="wrap"><footer>© Alessandro Pezzali · MUSHROOM · Il Quaderno di Micelio</footer></div>
+<script>
+let deferredPrompt=null;
+const installBtn=document.getElementById("installBtn");
+const help=document.getElementById("help");
+window.addEventListener("beforeinstallprompt",e=>{
+  e.preventDefault();deferredPrompt=e;
+});
+installBtn.addEventListener("click",async()=>{
+  if(location.protocol==="file:"){
+    help.style.display="block";
+    help.innerHTML="<b>Anteprima locale:</b> la PWA si può aprire e provare, ma l'installazione vera funziona solo dopo la pubblicazione HTTPS. Premi <b>Apri MUSHROOM</b>.";
+    return;
+  }
+  if(deferredPrompt){
+    deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;return;
+  }
+  const ios=/iPhone|iPad|iPod/.test(navigator.userAgent);
+  help.style.display="block";
+  help.innerHTML=ios
+    ?"Su iPhone/iPad: apri in <b>Safari</b> → <b>Condividi</b> → <b>Aggiungi alla schermata Home</b> → <b>Apri come app web</b>."
+    :"Se il browser non propone ancora l'installazione, apri prima MUSHROOM e usa il comando <b>Installa app / Aggiungi a schermata Home</b> del browser.";
+});
+</script>
+</body>
+</html>

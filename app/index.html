@@ -1,0 +1,1843 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5">
+<title>MUSHROOM · Il quaderno del bosco</title>
+<meta name="description" content="Indice di crescita dei funghi in Italia calcolato in tempo reale da pioggia, temperatura e bilancio idrico del suolo. Gratuito, senza account, senza costi.">
+<meta name="theme-color" content="#14180F">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MUSHROOM">
+<link rel="icon" href="icons/icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Archivo:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+:root{
+  --humus:#14180F;
+  --suolo:#1C2117;
+  --corteccia:#2A3122;
+  --muschio:#6E8B3D;
+  --lichene:#AFC08A;
+  --porcino:#C98A3C;
+  --amanita:#C1442E;
+  --spora:#F2EFE4;
+  --nebbia:#8C947E;
+  --r:14px;
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;overscroll-behavior:none}
+body{
+  background:var(--humus);color:var(--spora);
+  font-family:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:16px;line-height:1.45;
+  display:flex;flex-direction:column;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{font-family:"Fraunces",Georgia,serif;font-variation-settings:"SOFT" 40,"WONK" 1;margin:0;letter-spacing:-.01em}
+.mono{font-family:"Space Mono",ui-monospace,monospace}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--porcino);outline-offset:2px;border-radius:6px}
+
+/* ---------- testata ---------- */
+.topbar{
+  padding:calc(var(--safe-t) + 12px) 16px 10px;
+  display:flex;align-items:center;gap:12px;
+  border-bottom:1px solid var(--corteccia);
+  background:linear-gradient(180deg,#1A2013,#14180F);
+}
+.brand{display:flex;align-items:center;gap:11px;flex:1;min-width:0}
+.brand h1{font-size:21px;font-weight:800;line-height:1}
+.stamp{margin:3px 0 0;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--nebbia);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iconbtn{width:42px;height:42px;border-radius:50%;border:1px solid var(--corteccia);display:grid;place-items:center;flex:none;background:#1A2013}
+.iconbtn:active{background:var(--corteccia)}
+.spin{animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ---------- schede ---------- */
+.tabs{display:flex;gap:2px;padding:8px 10px;border-bottom:1px solid var(--corteccia);overflow-x:auto;scrollbar-width:none;
+  -webkit-mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 26px),transparent 100%);
+  mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 26px),transparent 100%)}
+.tabs::-webkit-scrollbar{display:none}
+.tab{
+  padding:8px 14px;border-radius:999px;font-size:13.5px;font-weight:600;
+  color:var(--nebbia);white-space:nowrap;border:1px solid transparent;
+}
+.tab[aria-selected="true"]{background:var(--corteccia);color:var(--spora);border-color:#3A4430}
+
+main{flex:1;position:relative;overflow:hidden}
+.view{position:absolute;inset:0;display:none;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.view.on{display:block}
+.pad{padding:16px 16px calc(28px + var(--safe-b));max-width:700px;margin:0 auto}
+
+/* ---------- mappa ---------- */
+#map{position:absolute;inset:0;background:#0F1310}
+.leaflet-container{font-family:"Archivo",sans-serif;background:#0F1310}
+/* tema scuro ricavato dai tasselli OSM chiari: nessuna chiave, nessun costo.
+   Il filtro tocca solo i tasselli, i marcatori restano nei loro colori. */
+#map.buio .leaflet-tile-pane{
+  filter:invert(1) hue-rotate(184deg) brightness(.92) contrast(.88) saturate(.42) sepia(.14);
+}
+.leaflet-control-attribution{background:rgba(20,24,15,.82)!important;color:#7E8672!important;font-size:9px!important}
+.leaflet-control-attribution a{color:#9AA88A!important}
+.leaflet-bar a{background:#1C2117!important;color:#F2EFE4!important;border-color:#2A3122!important}
+.leaflet-tooltip.tt{
+  background:#1C2117;border:1px solid #3A4430;color:#F2EFE4;font-size:12px;font-weight:600;
+  border-radius:8px;padding:5px 9px;box-shadow:0 4px 14px rgba(0,0,0,.45)
+}
+.leaflet-tooltip.tt::before{border-top-color:#3A4430}
+.maptools{position:absolute;left:10px;bottom:calc(14px + var(--safe-b));z-index:600;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.chip{
+  background:rgba(20,24,15,.9);border:1px solid var(--corteccia);border-radius:999px;
+  padding:8px 13px;font-size:12.5px;font-weight:600;backdrop-filter:blur(6px);
+}
+.chip.armed{background:var(--porcino);color:#14180F;border-color:var(--porcino)}
+.legend{
+  position:absolute;right:10px;top:10px;z-index:600;background:rgba(20,24,15,.9);
+  border:1px solid var(--corteccia);border-radius:12px;padding:9px 11px;backdrop-filter:blur(6px);
+}
+.legend b{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--nebbia);font-weight:700}
+.scale{display:flex;height:7px;width:112px;border-radius:4px;overflow:hidden;margin:6px 0 4px}
+.scale i{flex:1}
+.legend small{font-size:9.5px;color:var(--nebbia);display:flex;justify-content:space-between}
+.pulse{animation:pl 2.4s ease-out infinite}
+@keyframes pl{0%{r:9;opacity:.85}70%{r:24;opacity:0}100%{opacity:0}}
+
+/* ---------- schede luogo ---------- */
+.card{
+  background:var(--suolo);border:1px solid var(--corteccia);border-radius:var(--r);
+  padding:13px 14px;margin-bottom:10px;display:flex;gap:13px;align-items:center;width:100%;text-align:left;
+}
+.card:active{background:#232A1C}
+.card .val{font-family:"Space Mono",monospace;font-size:22px;font-weight:700;line-height:1;width:52px;flex:none;text-align:center}
+.card .val small{display:block;font-size:9px;font-weight:400;color:var(--nebbia);letter-spacing:.06em;margin-top:3px}
+.card h3{font-size:16px;font-weight:600}
+.card p{margin:2px 0 0;font-size:12.5px;color:var(--nebbia)}
+.rank{font-family:"Space Mono",monospace;font-size:11px;color:var(--nebbia);width:20px;flex:none}
+
+/* ---------- le mie fungaie ---------- */
+.card.mia{display:block;background:var(--suolo);padding:15px 16px}
+.miahead{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px}
+.miahead h3{font-size:17px;font-weight:600}
+.miahead p{margin:3px 0 0;font-size:12px;color:var(--nebbia);font-family:"Space Mono",monospace}
+.pill{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;border:1px solid;white-space:nowrap;flex:none}
+.cal{font-size:13.5px;color:var(--lichene);margin:0 0 12px;line-height:1.5}
+.cal b{color:var(--spora);font-family:"Space Mono",monospace}
+.cal2{font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--nebbia);font-weight:700;margin:0 0 7px}
+.btnrow{display:flex;gap:7px;flex-wrap:wrap}
+.mini{
+  flex:1;min-width:96px;padding:10px 12px;border-radius:10px;border:1px solid var(--corteccia);
+  background:#1A2013;font-size:13px;font-weight:600;text-align:center;
+}
+.mini:active{background:var(--corteccia)}
+.mini.danger{color:var(--amanita);border-color:#4A2A22}
+.stor{margin-top:13px}
+.stor summary{font-size:12.5px;color:var(--nebbia);cursor:pointer;padding:5px 0}
+.orow{display:flex;gap:10px;align-items:baseline;padding:6px 0;border-bottom:1px solid #232A1C;font-size:12.5px}
+.orow span{font-family:"Space Mono",monospace;color:var(--nebbia);width:64px;flex:none}
+.orow b{flex:1;font-weight:600}
+.orow em{font-style:normal;font-family:"Space Mono",monospace;color:var(--nebbia);font-size:11.5px}
+
+/* ---------- pannello dettaglio ---------- */
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;top:0;z-index:1200;
+  background:var(--humus);display:flex;flex-direction:column;
+  transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1);
+  visibility:hidden;
+}
+.sheet.open{transform:none;visibility:visible}
+.sheet header{
+  padding:calc(var(--safe-t) + 12px) 16px 12px;border-bottom:1px solid var(--corteccia);
+  display:flex;gap:12px;align-items:flex-start;background:#1A2013;
+}
+.sheet header .wrap{display:flex;gap:12px;align-items:flex-start;max-width:700px;margin:0 auto;width:100%}
+.sheet header h2{font-size:20px;font-weight:800;flex:1}
+.sheet header p{margin:3px 0 0;font-size:12px;color:var(--nebbia)}
+.sheet .body{flex:1;overflow-y:auto;padding:18px 16px calc(30px + var(--safe-b))}
+.sheet .body > *{max-width:700px;margin-inline:auto}
+
+.gauge{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+.gauge svg{flex:none}
+.verdict{font-family:"Fraunces",serif;font-size:22px;font-weight:800;line-height:1.15;margin:0}
+.verdict + p{margin:6px 0 0;font-size:13.5px;color:var(--lichene)}
+
+.sec{margin-top:22px}
+.sec > h3{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--nebbia);font-family:"Archivo",sans-serif;font-weight:700;margin-bottom:10px}
+.bar{margin-bottom:11px}
+.bar .lbl{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px}
+.bar .lbl span:last-child{font-family:"Space Mono",monospace;color:var(--nebbia)}
+.track{height:6px;background:#252C1E;border-radius:3px;overflow:hidden}
+.track i{display:block;height:100%;border-radius:3px;background:var(--muschio);transition:width .5s}
+
+.tl{max-width:100%;height:auto;display:block;border-radius:10px;background:var(--suolo);border:1px solid var(--corteccia)}
+.tlkey{display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--nebbia);flex-wrap:wrap}
+.tlkey b{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+
+.sp{display:flex;gap:11px;padding:11px 0;border-bottom:1px solid #232A1C}
+.sp:last-child{border:0}
+.sp .dot{width:9px;height:9px;border-radius:50%;margin-top:6px;flex:none;background:var(--porcino)}
+.sp h4{margin:0;font-size:14.5px;font-weight:600;font-family:"Archivo",sans-serif}
+.sp em{font-style:italic;color:var(--nebbia);font-size:12px}
+.sp p{margin:3px 0 0;font-size:12.5px;color:var(--lichene)}
+
+.note{background:var(--suolo);border-left:3px solid var(--porcino);border-radius:0 10px 10px 0;padding:12px 14px;font-size:13px;color:var(--lichene);margin-top:14px}
+.note.warn{border-color:var(--amanita)}
+.note b{color:var(--spora)}
+
+.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.stat div{background:var(--suolo);border:1px solid var(--corteccia);border-radius:10px;padding:10px}
+.stat b{display:block;font-family:"Space Mono",monospace;font-size:17px}
+.stat span{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--nebbia)}
+
+/* ---------- generici ---------- */
+.msg{padding:38px 22px;text-align:center;color:var(--nebbia);font-size:14px}
+.msg b{display:block;color:var(--spora);font-family:"Fraunces",serif;font-size:19px;font-weight:700;margin-bottom:7px}
+.btn{background:var(--muschio);color:#12160D;font-weight:700;padding:12px 20px;border-radius:999px;display:inline-block;margin-top:14px}
+.btn.ghost{background:none;border:1px solid var(--corteccia);color:var(--spora)}
+.toast{
+  position:fixed;left:50%;bottom:calc(26px + var(--safe-b));transform:translate(-50%,20px);
+  background:var(--corteccia);border:1px solid #3E4934;padding:11px 18px;border-radius:999px;font-size:13px;
+  z-index:2000;opacity:0;transition:.25s;pointer-events:none;max-width:88vw;text-align:center;
+}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.skel{height:66px;border-radius:var(--r);background:linear-gradient(90deg,#1C2117,#242C1D,#1C2117);background-size:200% 100%;animation:sk 1.4s linear infinite;margin-bottom:10px}
+@keyframes sk{to{background-position:-200% 0}}
+ul.rules{padding-left:18px;margin:0}
+ul.rules li{margin-bottom:9px;font-size:14px;color:var(--lichene)}
+ul.rules li b{color:var(--spora)}
+.lbl2{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--nebbia);font-weight:700;margin-bottom:6px}
+select{
+  width:100%;font:inherit;font-size:16px;color:var(--spora);background:var(--suolo);
+  border:1px solid var(--corteccia);border-radius:10px;padding:11px 13px;appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238C947E' stroke-width='2.4'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 13px center;
+}
+.nbox{margin-top:14px}
+.nhead{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.nhead h3{font-size:19px;font-weight:800;flex:1}
+.tagv,.tagd{font-size:10px;letter-spacing:.09em;text-transform:uppercase;font-weight:700;padding:4px 9px;border-radius:999px}
+.tagv{background:#26331A;color:#A8C86B;border:1px solid #3C5226}
+.tagd{background:#3A2A16;color:#D9A55E;border:1px solid #5A4020}
+.nlaw{font-size:12.5px;color:var(--nebbia);margin:0 0 12px}
+.nlaw a{color:var(--lichene)}
+.nrow{padding:10px 0;border-bottom:1px solid #232A1C}
+.nrow span{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--nebbia);font-weight:700;margin-bottom:3px}
+.nrow p{margin:0;font-size:14px;color:var(--spora)}
+.nrow p a{color:var(--porcino)}
+.sec ul.rules li a{color:var(--porcino)}
+.nsrc{font-size:11.5px;color:var(--nebbia);margin:12px 0 0}
+.nsrc a{color:var(--lichene)}
+
+/* ---------- identità MUSHROOM ---------- */
+.storypage{padding-top:28px;max-width:720px}
+.story-kicker{font-size:10.5px;letter-spacing:.18em;color:var(--porcino);font-weight:700;margin:0 0 10px}
+.story-title{font-size:30px;line-height:1.08;margin-bottom:24px}
+.storytext{font-family:"Fraunces",Georgia,serif;color:#DDD8C9;font-size:17px;line-height:1.72}
+.storytext p{margin:0 0 20px}
+.storyquote{font-size:22px;line-height:1.3;color:var(--spora);border-left:3px solid var(--porcino);padding-left:15px}
+.story-end{font-size:24px;line-height:1.25;color:var(--spora);font-weight:800;margin-top:30px!important}
+.quickfound{position:fixed;right:14px;bottom:calc(16px + var(--safe-b));z-index:900;padding:13px 16px;border-radius:999px;background:#A8E56B;color:#14180F;font-weight:800;box-shadow:0 8px 28px rgba(0,0,0,.45)}
+.quickmodal{position:fixed;inset:0;background:rgba(8,10,7,.88);z-index:1800;display:none;align-items:center;justify-content:center;padding:18px}
+.quickmodal.on{display:flex}
+.quickbox{width:min(520px,100%);background:var(--suolo);border:1px solid var(--corteccia);border-radius:18px;padding:18px}
+.quickbox h2{font-size:21px;margin-bottom:4px}.quickbox p{font-size:13px;color:var(--nebbia);margin-top:0}
+.quickbox select{width:100%;padding:11px;border-radius:10px;background:#14180F;color:var(--spora);border:1px solid var(--corteccia);margin:8px 0 14px}
+.quick-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.quick-actions button{padding:11px 8px;border-radius:10px;border:1px solid var(--corteccia);background:#1A2013;font-size:12px;font-weight:700}
+.quickclose{width:100%;margin-top:10px;padding:10px;border:1px solid var(--corteccia);border-radius:10px;color:var(--nebbia)}
+.onboard{position:fixed;inset:0;z-index:2500;background:linear-gradient(180deg,#10150d,#171d12);display:none;overflow:auto}
+.onboard.on{display:block}.onboard-inner{min-height:100%;max-width:680px;margin:auto;padding:calc(var(--safe-t) + 34px) 24px calc(var(--safe-b) + 30px);display:flex;flex-direction:column;justify-content:center}
+.onboard-k{font-size:10px;letter-spacing:.2em;color:var(--porcino);font-weight:700}
+.onboard h2{font-size:clamp(30px,8vw,47px);line-height:1.06;margin:14px 0 16px}.onboard p{font-size:16px;color:var(--lichene);max-width:560px}
+.onboard-dots{display:flex;gap:6px;margin:22px 0}.onboard-dots i{height:3px;width:34px;background:var(--corteccia)}.onboard-dots i.on{background:var(--porcino)}
+.onboard button{align-self:flex-start;padding:12px 18px;border-radius:999px;background:var(--porcino);color:#14180F;font-weight:800}
+
+
+/* ---------- MUSHROOM v0.3 · Report del bosco ---------- */
+.reportbox{margin-top:14px;padding:14px;border:1px solid var(--corteccia);border-radius:14px;background:#161C12}
+.reportcontrols{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end}
+.reportcontrols label{font-size:11px;color:var(--nebbia);display:block;margin-bottom:5px}
+.reportcontrols input{width:100%;background:var(--suolo);color:var(--spora);border:1px solid var(--corteccia);border-radius:9px;padding:10px}
+.reportcontrols button{padding:10px 12px;border-radius:9px;background:var(--porcino);color:#14180F;font-weight:800}
+.report-head{display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:center;margin:14px 0}
+.report-score{font:800 32px/1 "Space Mono",monospace;color:var(--porcino)}
+.report-verdict{font-weight:800;font-size:18px}
+.report-summary{color:var(--lichene);font-size:13.5px;margin-top:4px}
+.report-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:12px 0}
+.report-grid div{background:var(--suolo);border:1px solid var(--corteccia);border-radius:10px;padding:9px}
+.report-grid b{display:block;font:700 16px "Space Mono",monospace}.report-grid span{font-size:10px;color:var(--nebbia);text-transform:uppercase;letter-spacing:.05em}
+.reporttable{overflow:auto;margin-top:12px;border:1px solid var(--corteccia);border-radius:10px}
+.reporttable table{width:100%;border-collapse:collapse;min-width:760px;font-size:12px}
+.reporttable th,.reporttable td{padding:8px;border-bottom:1px solid var(--corteccia);text-align:right}
+.reporttable th:first-child,.reporttable td:first-child{text-align:left}
+.reporttable th{position:sticky;top:0;background:#20271A;color:var(--lichene);font-size:10px;text-transform:uppercase}
+.reporttable tr:last-child td{border-bottom:0}.reporttable .future td:first-child:after{content:" previsione";font-size:9px;color:var(--nebbia)}
+.report-actions{display:flex;gap:8px;margin-top:10px}.report-actions button{flex:1}
+@media(max-width:640px){.reportcontrols{grid-template-columns:1fr 1fr}.reportcontrols button{grid-column:1/-1}.report-grid{grid-template-columns:1fr 1fr}.report-head{grid-template-columns:90px 1fr}}
+
+
+/* ---------- MUSHROOM v0.4 · decisione prima dei numeri ---------- */
+.decision{margin:14px 0 18px;padding:18px;border:1px solid var(--corteccia);border-radius:16px;background:#171D13}
+.decision-k{font-size:10px;letter-spacing:.13em;color:var(--nebbia);font-weight:700;text-transform:uppercase}
+.decision h3{font-size:25px;line-height:1.08;margin:7px 0 7px;color:var(--spora)}
+.decision-lead{font-size:15px;line-height:1.5;color:var(--lichene);margin:0 0 14px}
+.decision-meta{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:12px 0}
+.decision-meta div{padding:10px;border-radius:10px;background:var(--suolo);border:1px solid var(--corteccia)}
+.decision-meta span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--nebbia)}
+.decision-meta b{display:block;margin-top:3px;font-size:14px}
+.whysimple{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:12px}
+.whycard{padding:11px;border:1px solid var(--corteccia);border-radius:10px;background:#12170F}
+.whycard .ico{font-size:19px}.whycard b{display:block;margin:4px 0 2px;font-size:12px}.whycard p{font-size:11.5px;color:var(--nebbia);line-height:1.35;margin:0}
+.conclusion{margin-top:12px;padding:12px;border-left:3px solid var(--porcino);background:var(--suolo);font-size:13.5px;line-height:1.5}
+.tech-toggle{width:100%;margin:12px 0 0;padding:11px;border:1px solid var(--corteccia);border-radius:10px;color:var(--lichene);font-weight:700;background:#14190F}
+.tech-details{display:none}.tech-details.on{display:block}
+.period-presets{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.period-presets button{padding:7px 9px;border:1px solid var(--corteccia);border-radius:999px;font-size:11px;color:var(--lichene)}
+.period-presets button.active{background:var(--porcino);color:#14180F;border-color:var(--porcino);font-weight:800}
+.forestline{margin:14px 0 4px;padding:12px;border:1px solid var(--corteccia);border-radius:10px;background:#12170F}
+.forestline-bar{height:7px;border-radius:999px;background:linear-gradient(90deg,#456c89 0 28%,#756f35 28% 55%,#798d48 55% 74%,#a77a32 74% 100%);position:relative;margin:22px 3px 8px}
+.forestline-now{position:absolute;left:67%;top:-8px;width:2px;height:23px;background:var(--spora)}
+.forestline-now:before{content:"OGGI";position:absolute;top:-17px;left:-13px;font-size:8px;color:var(--spora)}
+.forestline-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--nebbia)}
+@media(max-width:540px){.whysimple,.decision-meta{grid-template-columns:1fr}.decision h3{font-size:22px}}
+
+
+.map-preview{position:absolute;z-index:1200;display:none;width:min(330px,calc(100vw - 28px));padding:13px 14px;border:1px solid var(--corteccia);border-radius:14px;background:rgba(18,23,15,.97);box-shadow:0 14px 38px rgba(0,0,0,.45);backdrop-filter:blur(8px)}
+.map-preview.on{display:block}.map-preview h3{font-size:20px;margin:4px 0}.map-preview-k{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--nebbia);font-weight:700}.mp-sub{font-size:11px;color:var(--nebbia);margin-bottom:8px}.mp-verdict{font-weight:800;font-size:15px;margin:4px 0 6px}.mp-lead{font-size:12px;line-height:1.38;color:var(--lichene)}.mp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:9px 0}.mp-grid div{padding:7px;border:1px solid var(--corteccia);border-radius:8px;background:#11160E}.mp-grid span{display:block;font-size:8px;text-transform:uppercase;color:var(--nebbia)}.mp-grid b{display:block;font-size:12px;margin-top:2px}.mp-open{width:100%;padding:9px;border-radius:9px;background:var(--porcino);color:#14180F;font-weight:800}.mp-close{display:none;position:absolute;right:8px;top:8px;width:28px;height:28px;border:1px solid var(--corteccia);border-radius:999px}
+@media (hover:none),(pointer:coarse){.map-preview{position:fixed;left:12px!important;right:12px!important;bottom:calc(12px + var(--safe-b));top:auto!important;width:auto}.mp-close{display:block}}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M4 15c0-6.2 5.4-11 12-11s12 4.8 12 11c0 1.3-1 2-2.4 2H6.4C5 17 4 16.3 4 15z" fill="#C98A3C"/>
+      <ellipse cx="11" cy="10" rx="2.4" ry="1.7" fill="#E0AA6B"/>
+      <ellipse cx="20" cy="8.4" rx="1.7" ry="1.2" fill="#E0AA6B"/>
+      <path d="M13 17h6c0 4-.7 7.4-1.2 10.4-.2 1-2.4 1-2.6 0C14.7 24.4 13 21 13 17z" fill="#EFE7D4"/>
+    </svg>
+    <div>
+      <h1>MUSHROOM</h1>
+      <p class="stamp"><span style="color:var(--porcino)">IL QUADERNO DEL BOSCO</span> · <span id="stampDate">—</span></p>
+    </div>
+  </div>
+  <button class="iconbtn" id="btnRefresh" aria-label="Aggiorna i dati">
+    <svg id="refreshIcon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round">
+      <path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/>
+    </svg>
+  </button>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab" role="tab" aria-selected="true" data-v="map">Mappa</button>
+  <button class="tab" role="tab" aria-selected="false" data-v="list">Oggi</button>
+  <button class="tab" role="tab" aria-selected="false" data-v="near">Vicino a me</button>
+  <button class="tab" role="tab" aria-selected="false" data-v="mie">Le mie fungaie</button>
+  <button class="tab" role="tab" aria-selected="false" data-v="luna">Luna</button>
+  <button class="tab" role="tab" aria-selected="false" data-v="rules">Regole</button>
+  <button class="tab" role="tab" aria-selected="false" data-v="story">La storia</button>
+  <button class="tab" role="tab" aria-selected="false" data-v="info">Info & privacy</button>
+</nav>
+
+<main>
+  <section class="view on" id="v-map">
+    <div id="map"></div><div class="note" style="margin-top:8px"><b>Anteprima rapida:</b> passa il mouse sui cerchi della mappa; su telefono tocca il cerchio. Apri la scheda completa solo quando la zona ti interessa.</div>
+    <div class="legend">
+      <b>Indice</b>
+      <div class="scale"><i style="background:#5A6B5E"></i><i style="background:#6E8B3D"></i><i style="background:#A8A233"></i><i style="background:#C98A3C"></i><i style="background:#D9622B"></i></div>
+      <small><span>fermo</span><span>buttata</span></small>
+    </div>
+    <div class="maptools">
+      <button class="chip" id="btnProbe">Sonda un punto</button>
+      <button class="chip" id="btnMark">Segna una fungaia</button>
+      <button class="chip" id="btnLayer">Rilievo</button>
+    </div>
+  </section>
+
+  <section class="view" id="v-list"><div class="pad" id="listBox"></div></section>
+  <section class="view" id="v-near"><div class="pad" id="nearBox"></div></section>
+  <section class="view" id="v-mie"><div class="pad" id="mieBox"></div></section>
+  <section class="view" id="v-luna"><div class="pad" id="lunaBox"></div></section>
+  <input type="file" id="fileImport" accept="application/json" hidden>
+
+  <section class="view" id="v-rules"><div class="pad" id="normeBox"></div></section>
+
+
+  <section class="view" id="v-story">
+    <div class="pad storypage">
+      <p class="story-kicker">QUELLO CHE MI DICEVA MIO PADRE</p>
+      <h2 class="story-title">Il bosco non risponde a te.<br>Risponde alla sua acqua.</h2>
+      <div class="storytext">
+        <p class="storyquote">Non guardare il cielo di oggi. Guarda quello di dieci giorni fa.</p>
+        <p>Me lo ripeteva ogni volta che gli chiedevo se valeva la pena andare, e io ogni volta guardavo fuori dalla finestra come se la risposta fosse lì. La pioggia di stamattina non serve a niente, diceva. Bagna le foglie e basta. Quella che conta è caduta due settimane fa, quando tu manco te ne sei accorto, ed è scesa giù piano fino a dove lavora il micelio. Da lì in avanti è solo questione di aspettare che la terra si raffreddi.</p>
+
+        <p>La luna la guardava, sì. Ma quando gli ho chiesto perché, non mi ha parlato di forze o di maree. Mi ha detto: perché con la luna conti i giorni senza doverli scrivere. Piena, nuova, piena. Ogni mezzo giro sono due settimane, e due settimane sono il tempo che ci vuole. La luna non faceva crescere niente. Era il suo calendario, e funzionava.</p>
+
+        <p class="storyquote">I posti li devi andare a sentire.</p>
+        <p>Non fidarti di nessuno che ti dice che è ora, nemmeno di te stesso. Fai il giro corto, quello sotto la faggeta a nord dove il sole arriva tardi, e guarda per terra dove il muschio è ancora scuro. Se trovi due primordi grossi come nocciole, non li toccare. Torna fra tre giorni. Se non trovi niente, torna fra tre giorni lo stesso, perché il bosco non risponde a te, risponde alla sua acqua.</p>
+
+        <p class="storyquote">Cammina piano. Quelli che tornano vuoti hanno camminato veloce.</p>
+        <p>Porta il cesto di vimini. I posti si lasciano meglio di come li hai trovati, se no fra vent'anni ci vai e non c'è più niente da lasciare a nessuno.</p>
+
+        <p>Prendi quelli che mangi. Non uno di più.</p>
+        <p>E qualunque cosa tu creda di aver riconosciuto, portali a far vedere. Anche se sei sicuro. Soprattutto se sei sicuro.</p>
+
+        <p>Le fungaie non sono un segreto da portarsi via. Sono una cosa che si consegna.</p>
+        <p class="story-end">Questa app è il quaderno che non abbiamo mai tenuto.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="v-info">
+    <div class="pad">
+      <h2 style="font-size:22px;margin-bottom:3px">Info e privacy</h2>
+      <p style="color:var(--nebbia);font-size:13px;margin:0 0 18px">Chi c'è dietro, che cosa fa l'app con i tuoi dati, e che cosa non garantisce.</p>
+
+      <div class="sec"><h3>Chi c'è dietro</h3>
+        <p style="font-size:14px;color:var(--lichene);margin-top:0">MUSHROOM è un progetto indipendente di <b style="color:var(--spora)">Alessandro Pezzali</b>, parte dell'ecosistema PezzaliApp: applicazioni web gratuite, open source e senza pubblicità, che funzionano nel browser senza installazione.</p>
+        <p style="font-size:14px;color:var(--lichene)">Non è un servizio ufficiale di alcun ente pubblico. Non è sponsorizzato né sostenuto da Regioni, Province, enti parco o aziende sanitarie.</p>
+        <div class="nrow"><span>Email</span><p><a href="mailto:pezzaliapp@gmail.com">pezzaliapp@gmail.com</a></p></div>
+        <div class="nrow"><span>Siti</span><p><a href="https://pezzaliapp.com" target="_blank" rel="noopener">pezzaliapp.com</a> · <a href="https://alessandropezzali.it" target="_blank" rel="noopener">alessandropezzali.it</a> · <a href="https://pezzalihub.app" target="_blank" rel="noopener">pezzalihub.app</a></p></div>
+        <div class="nrow"><span>Versione</span><p><b id="verApp">—</b> del <span id="verData">—</span>. L'app si aggiorna da sola: quando c'è una versione nuova viene scaricata e applicata al successivo avvio, senza dover svuotare la cache.</p></div>
+        <div class="nrow"><span>Segnalazioni</span><p>Un dato normativo sbagliato, una zona da aggiungere, un errore nel modello: scrivi all'email sopra.</p></div>
+      </div>
+
+      <div class="sec"><h3>Informativa privacy</h3>
+        <p style="font-size:13px;color:var(--nebbia);margin-top:0">Ai sensi degli articoli 13 e 14 del Regolamento UE 2016/679. Ultimo aggiornamento: 29 agosto 2026.</p>
+        <div class="nrow"><span>Titolare del trattamento</span><p>Alessandro Pezzali — pezzaliapp@gmail.com</p></div>
+        <div class="nrow"><span>Cosa non viene raccolto</span><p>Nessun account, nessuna registrazione, nessun cookie, nessun sistema di statistiche o tracciamento, nessuna pubblicità, nessuna profilazione. L'autore non dispone di un server proprio e non riceve né conserva dati sui tuoi utilizzi.</p></div>
+        <div class="nrow"><span>Hosting</span><p>Le pagine sono distribuite da <b>GitHub Pages</b> (GitHub Inc., gruppo Microsoft, server negli Stati Uniti), che registra nei propri log tecnici l'indirizzo IP e i dati di connessione di chi visita il sito, secondo le proprie politiche e per finalità di sicurezza e funzionamento. L'autore non ha accesso a quei log.</p></div>
+        <div class="nrow"><span>Dati sul tuo dispositivo</span><p>L'app salva localmente l'ultimo rilevamento meteo, per funzionare offline. Restano nel tuo browser, non vengono trasmessi e si cancellano disinstallando l'app o svuotando i dati del sito.</p></div>
+        <div class="nrow"><span>Posizione</span><p>Richiesta solo se tocchi «Usa la mia posizione», e revocabile in ogni momento dalle impostazioni del telefono. Serve a ordinare i comprensori per distanza, calcolo che avviene sul dispositivo. <b>Se invece chiedi di calcolare l'indice nel punto in cui ti trovi, o sondi un punto sulla mappa, quelle coordinate vengono inviate al servizio meteo</b> per ottenere i dati di quel luogo: è tecnicamente necessario e non sono associate a un'identità.</p></div>
+        <div class="nrow"><span>Terze parti che ricevono il tuo indirizzo IP</span><p>Come per qualsiasi sito, chi distribuisce le pagine e i contenuti caricati vede l'indirizzo IP di connessione: <b>GitHub Pages</b> (hosting, Stati Uniti), <b>Open-Meteo</b> (dati meteo, Germania), <b>OpenStreetMap Foundation</b> e <b>OpenTopoMap</b> (tasselli della mappa, Unione europea e Regno Unito), <b>unpkg</b> (libreria Leaflet), <b>Google Fonts</b> (caratteri tipografici, Stati Uniti). Nessuno di questi riceve dati che ti identifichino, oltre a quelli tecnici della connessione.</p></div>
+        <div class="nrow"><span>Trasferimenti fuori dall'Unione europea</span><p>L'hosting su GitHub Pages, unpkg e Google Fonts comportano un trasferimento verso gli Stati Uniti, coperto dalle clausole contrattuali standard e dai meccanismi di adeguatezza adottati dai rispettivi fornitori. I dati meteorologici e cartografici restano nell'Unione europea.</p></div>
+        <div class="nrow"><span>Base giuridica e durata</span><p>Legittimo interesse a erogare il servizio richiesto per le chiamate tecniche necessarie; consenso esplicito e revocabile per la posizione. L'autore non conserva alcun dato: le durate di conservazione dei log sono quelle dei fornitori sopra indicati.</p></div>
+        <div class="nrow"><span>I tuoi diritti</span><p>Poiché non viene creato alcun archivio riconducibile a te, non esistono dati da consultare, correggere o cancellare presso il titolare. Restano esercitabili accesso, rettifica, cancellazione, limitazione, opposizione e portabilità scrivendo all'email indicata, e il reclamo al Garante per la protezione dei dati personali.</p></div>
+        <div class="note warn"><b>Nota per un uso istituzionale.</b> Due dipendenze comportano un trasferimento di dati fuori dall'Unione europea: i caratteri tipografici caricati da <b>Google Fonts</b> e la libreria Leaflet caricata da <b>unpkg</b>. Entrambe si eliminano ospitando i file sul proprio dominio, operazione di pochi minuti. Resta l'hosting: per una pubblica amministrazione va valutato se GitHub Pages sia compatibile con le proprie politiche, o se pubblicare su infrastruttura qualificata ACN. I dati meteorologici e cartografici sono già europei.</div>
+      </div>
+
+      <div class="sec"><h3>Avvertenze e limitazioni di responsabilità</h3>
+        <ul class="rules">
+          <li><b>L'app non riconosce i funghi.</b> Non identifica specie, non valuta commestibilità, non sostituisce in alcun modo il parere di un micologo. Fai sempre controllare il raccolto da un <b>Ispettorato micologico dell'ASL</b> prima di consumarlo. Molte specie mortali somigliano a specie commestibili e la cottura non elimina le tossine.</li>
+          <li><b>L'indice è una stima probabilistica</b> ricavata da dati meteorologici, non una misura né una garanzia. Un valore alto non assicura la presenza di funghi, un valore basso non ne esclude la presenza.</li>
+          <li><b>Le schede normative sono indicative e non fanno fede.</b> L'unico testo vincolante è l'atto ufficiale dell'ente competente sul territorio di raccolta. Verifica sempre permessi, limiti, giorni e divieti presso Regione, Comune, Comunità montana o ente parco prima di andare.</li>
+          <li><b>Resta a tuo carico</b> il possesso dei permessi, il rispetto dei limiti quantitativi e delle aree interdette, e la tua sicurezza in ambiente montano e boschivo.</li>
+          <li>L'autore non risponde di danni diretti o indiretti derivanti dall'uso dell'app, nei limiti consentiti dalla legge. Il software è fornito «così com'è», secondo la licenza MIT.</li>
+          <li><b>In caso di sospetta intossicazione chiama il 112</b> e conserva i resti del fungo e degli scarti di pulitura: servono per l'identificazione.</li>
+        </ul>
+      </div>
+
+      <div class="sec"><h3>Fonti e attribuzioni</h3>
+        <ul class="rules">
+          <li><b>Dati meteorologici</b> — Open-Meteo, licenza CC BY 4.0, elaborati da modelli dei servizi meteorologici nazionali.</li>
+          <li><b>Cartografia</b> — © contributori di OpenStreetMap, licenza ODbL. Vista rilievo © OpenTopoMap, licenza CC BY-SA.</li>
+          <li><b>Libreria cartografica</b> — Leaflet, licenza BSD-2.</li>
+          <li><b>Riferimenti normativi</b> — ISPRA, Network nazionale per lo studio della diversità micologica, e testi delle leggi regionali.</li>
+          <li><b>Caratteri</b> — Fraunces, Archivo e Space Mono, SIL Open Font License.</li>
+        </ul>
+        <p class="nsrc">MUSHROOM è software libero rilasciato sotto licenza MIT: chiunque può usarlo, modificarlo e ridistribuirlo, anche a fini commerciali, mantenendo la nota di copyright.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="norme.js"></script>
+
+
+<button class="quickfound" id="quickFound">🍄 Registra uscita</button>
+
+<div class="quickmodal" id="quickModal" aria-hidden="true">
+  <div class="quickbox">
+    <h2>Registra l'uscita di oggi</h2>
+    <p>Il risultato viene associato alla tua fungaia e alle condizioni calcolate oggi.</p>
+    <select id="quickPlace"></select>
+    <div class="quick-actions">
+      <button data-esito="0">Niente</button>
+      <button data-esito="1">Primi sentori</button>
+      <button data-esito="2">Buttata</button>
+    </div>
+    <button class="quickclose" id="quickClose">Annulla</button>
+  </div>
+</div>
+
+<div class="onboard" id="mushOnboard">
+  <div class="onboard-inner">
+    <div class="onboard-k" id="obK">MUSHROOM · QUELLO CHE MI DICEVA MIO PADRE</div>
+    <h2 id="obTitle"></h2>
+    <p id="obText"></p>
+    <div class="onboard-dots"><i></i><i></i><i></i></div>
+    <button id="obNext">Continua</button>
+  </div>
+</div>
+
+
+<div class="map-preview" id="mapPreview" aria-hidden="true">
+<button class="mp-close" id="mapPreviewClose" aria-label="Chiudi">×</button>
+<div id="mapPreviewContent"></div>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Dettaglio località">
+  <header>
+   <div class="wrap">
+    <div style="flex:1;min-width:0">
+      <h2 id="shTitle">—</h2>
+      <p id="shSub">—</p>
+    </div>
+    <button class="iconbtn" id="shClose" aria-label="Chiudi">
+      <svg width="18" height="18" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+   </div>
+  </header>
+  <div class="body" id="shBody"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+"use strict";
+
+/* Versione dell'app. Va tenuta allineata a VERSIONE in sw.js. */
+const APP_VER = "0.5.1";
+const APP_DATA = "30 agosto 2026";
+
+/* =========================================================
+   1. LUOGHI — aree vocate, coordinate indicative del comprensorio
+   ========================================================= */
+const LUOGHI = [
+ {n:"Gressoney",              r:"Valle d'Aosta",     la:45.775, lo:7.826,  b:"lariceti e abetaie"},
+ {n:"Val Vigezzo",            r:"Piemonte",          la:46.136, lo:8.470,  b:"faggete e betulle"},
+ {n:"Valsesia · Varallo",     r:"Piemonte",          la:45.813, lo:8.256,  b:"castagneti e faggete"},
+ {n:"Alta Langa · Ceva",      r:"Piemonte",          la:44.385, lo:8.031,  b:"noccioleti e querce"},
+ {n:"Valle Stura · Demonte",  r:"Piemonte",          la:44.315, lo:7.298,  b:"abetaie e larici"},
+ {n:"Valtellina · Albaredo",  r:"Lombardia",         la:46.083, lo:9.583,  b:"faggete e abetaie"},
+ {n:"Val Camonica · Borno",   r:"Lombardia",         la:45.945, lo:10.200, b:"faggete d'altura"},
+ {n:"Oltrepò · Varzi",        r:"Lombardia",         la:44.822, lo:9.203,  b:"castagneti"},
+ {n:"Triangolo Lariano",      r:"Lombardia",         la:45.930, lo:9.270,  b:"castagneti e faggete"},
+ {n:"Val di Fiemme",          r:"Trentino",          la:46.288, lo:11.461, b:"abetaie rosse"},
+ {n:"Folgaria",               r:"Trentino",          la:45.917, lo:11.170, b:"abetaie e faggete"},
+ {n:"Val di Non · Fondo",     r:"Trentino",          la:46.437, lo:11.138, b:"abetaie e larici"},
+ {n:"Val Pusteria",           r:"Alto Adige",        la:46.797, lo:11.936, b:"peccete e cembri"},
+ {n:"Altopiano di Asiago",    r:"Veneto",            la:45.877, lo:11.510, b:"abetaie e pascoli"},
+ {n:"Foresta del Cansiglio",  r:"Veneto",            la:46.060, lo:12.400, b:"faggeta storica"},
+ {n:"Lessinia",               r:"Veneto",            la:45.626, lo:11.037, b:"faggete e prati"},
+ {n:"Tarvisiano",             r:"Friuli",            la:46.505, lo:13.578, b:"abetaie e larici"},
+ {n:"Valli del Natisone",     r:"Friuli",            la:46.093, lo:13.432, b:"castagneti e faggete"},
+ {n:"Val d'Aveto",            r:"Liguria",           la:44.545, lo:9.443,  b:"faggete d'Appennino"},
+ {n:"Beigua · Sassello",      r:"Liguria",           la:44.475, lo:8.489,  b:"pinete e castagneti"},
+ {n:"Borgotaro",              r:"Emilia-Romagna",    la:44.489, lo:9.769,  b:"faggete del porcino IGP"},
+ {n:"Cimone · Sestola",       r:"Emilia-Romagna",    la:44.230, lo:10.775, b:"faggete e abetine"},
+ {n:"Bagno di Romagna",       r:"Emilia-Romagna",    la:43.844, lo:11.978, b:"faggete e abetine"},
+ {n:"Casentino",              r:"Toscana",           la:43.792, lo:11.870, b:"foreste casentinesi"},
+ {n:"Garfagnana",             r:"Toscana",           la:44.107, lo:10.410, b:"castagneti e faggete"},
+ {n:"Monte Amiata",           r:"Toscana",           la:42.881, lo:11.677, b:"faggete e castagneti"},
+ {n:"Mugello · Firenzuola",   r:"Toscana",           la:44.119, lo:11.379, b:"querceti e faggete"},
+ {n:"Colline Metallifere",    r:"Toscana",           la:43.048, lo:10.892, b:"sughere e lecci"},
+ {n:"Norcia · Sibillini",     r:"Umbria",            la:42.793, lo:13.093, b:"faggete e pascoli"},
+ {n:"Monte Subasio",          r:"Umbria",            la:43.070, lo:12.616, b:"lecci e roverelle"},
+ {n:"Cantiano · Catria",      r:"Marche",            la:43.470, lo:12.633, b:"faggete e cerrete"},
+ {n:"Amandola · Sibillini",   r:"Marche",            la:42.980, lo:13.359, b:"faggete"},
+ {n:"Monti Cimini",           r:"Lazio",             la:42.418, lo:12.234, b:"faggeta depressa e castagni"},
+ {n:"Monti Simbruini",        r:"Lazio",             la:41.887, lo:13.322, b:"faggete"},
+ {n:"Monti della Tolfa",      r:"Lazio",             la:42.150, lo:11.930, b:"cerrete e sughere"},
+ {n:"Pescasseroli",           r:"Abruzzo",           la:41.807, lo:13.788, b:"faggete del Parco"},
+ {n:"Bosco di Sant'Antonio",  r:"Abruzzo",           la:41.888, lo:14.067, b:"faggeta secolare"},
+ {n:"Capracotta",             r:"Molise",            la:41.827, lo:14.264, b:"abetina e faggete"},
+ {n:"Bagnoli Irpino",         r:"Campania",          la:40.832, lo:15.073, b:"Laceno, faggete e castagni"},
+ {n:"Cilento · Sanza",        r:"Campania",          la:40.253, lo:15.545, b:"faggete del Cervati"},
+ {n:"Foresta Umbra",          r:"Puglia",            la:41.826, lo:16.100, b:"faggeta del Gargano"},
+ {n:"Pollino",                r:"Basilicata",        la:39.977, lo:16.300, b:"faggete e pini loricati"},
+ {n:"Sila · Camigliatello",   r:"Calabria",          la:39.331, lo:16.470, b:"pinete di laricio"},
+ {n:"Serre · Serra S. Bruno", r:"Calabria",          la:38.575, lo:16.328, b:"abetina e faggete"},
+ {n:"Aspromonte",             r:"Calabria",          la:38.166, lo:15.833, b:"faggete e castagneti"},
+ {n:"Etna · Linguaglossa",    r:"Sicilia",           la:37.842, lo:15.141, b:"pinete e castagneti"},
+ {n:"Madonie",                r:"Sicilia",           la:37.808, lo:14.096, b:"querceti e faggete"},
+ {n:"Nebrodi · Cesarò",       r:"Sicilia",           la:37.845, lo:14.630, b:"faggete e sughere"},
+ {n:"Barbagia · Fonni",       r:"Sardegna",          la:40.116, lo:9.256,  b:"lecci e roverelle"},
+ {n:"Limbara · Tempio",       r:"Sardegna",          la:40.900, lo:9.100,  b:"sughere e graniti"}
+];
+
+/* =========================================================
+   2. MODELLO DELLA BUTTATA
+   L'indice combina cinque segnali agronomici. Nessuno di essi
+   misura i funghi: misurano le condizioni che li fanno uscire.
+   ========================================================= */
+const PAST = 28, FUT = 7;                 // giorni richiesti all'API
+const IDX_START = 18;                     // primo giorno calcolabile (serve la finestra -16)
+
+const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
+const sum=(a,i,j)=>{let s=0;for(let k=Math.max(0,i);k<=Math.min(a.length-1,j);k++)s+=(a[k]??0);return s};
+const avg=(a,i,j)=>{let s=0,n=0;for(let k=Math.max(0,i);k<=Math.min(a.length-1,j);k++){if(a[k]!=null){s+=a[k];n++}}return n?s/n:null};
+
+function indiceGiorno(d,t){
+  const P=d.precipitation_sum, Tm=d.temperature_2m_mean, Tx=d.temperature_2m_max, Tn=d.temperature_2m_min, E=d.et0_fao_evapotranspiration;
+
+  // a) pioggia d'innesco: quella caduta 6–16 giorni fa, che oggi diventa carpoforo
+  const pIn = sum(P,t-16,t-6);
+  const sIn = 1-Math.exp(-pIn/38);
+  // evento singolo significativo: una bagnata vera conta più di pioviggine diffusa
+  let maxDay=0; for(let k=t-16;k<=t-6;k++) maxDay=Math.max(maxDay,P[k]??0);
+  const sEv = clamp(maxDay/14);
+
+  // b) mantenimento: umidità dell'aria e del lettiere negli ultimi 5 giorni
+  const sMan = 1-Math.exp(-sum(P,t-5,t)/16);
+
+  // c) bilancio idrico: pioggia meno evapotraspirazione su 20 giorni
+  const bil = sum(P,t-20,t) - sum(E,t-20,t);
+  const sBil = bil<-30 ? 0 : bil<0 ? (bil+30)/30*0.55 : bil<70 ? 0.55+bil/70*0.45 : clamp(1-(bil-70)/220,0.6,1);
+
+  // d) temperatura: ottimo attorno ai 14–15 °C di media
+  const tMed = avg(Tm,t-9,t) ?? 12;
+  const sTemp = Math.exp(-Math.pow(tMed-14.5,2)/(2*Math.pow(6.2,2)));
+
+  // e) sbalzo termico: il raffreddamento dopo la pioggia sblocca la fruttificazione
+  const t1 = avg(Tm,t-15,t-10), t2 = avg(Tm,t-7,t-2);
+  const drop = (t1!=null&&t2!=null) ? t1-t2 : 0;
+  const sSb = clamp(drop/6);
+
+  // penalità: gelo e canicola bloccano il micelio
+  const tmin = Math.min(...[...Array(7)].map((_,k)=>Tn[t-k]??99));
+  const tmax = Math.max(...[...Array(7)].map((_,k)=>Tx[t-k]??-99));
+  const pGelo = tmin<-1 ? 0.35 : tmin<1.5 ? 0.7 : 1;
+  const pCald = tmax>33 ? 0.45 : tmax>29 ? 0.78 : 1;
+  const pSecc = sum(P,t-12,t)<4 ? 0.45 : 1;
+
+  const grezzo = 0.30*sIn + 0.10*sEv + 0.10*sMan + 0.20*sBil + 0.22*sTemp + 0.08*sSb;
+  const val = Math.round(100*clamp(grezzo*pGelo*pCald*pSecc));
+
+  return {val, parti:{
+    "Pioggia d'innesco (6–16 gg fa)":{v:Math.round(100*(0.75*sIn+0.25*sEv)), d:pIn.toFixed(0)+" mm"},
+    "Umidità recente (0–5 gg)":{v:Math.round(100*sMan), d:sum(P,t-5,t).toFixed(0)+" mm"},
+    "Bilancio idrico del suolo":{v:Math.round(100*sBil), d:(bil>0?"+":"")+bil.toFixed(0)+" mm"},
+    "Temperatura del periodo":{v:Math.round(100*sTemp), d:tMed.toFixed(1)+" °C"},
+    "Sbalzo termico":{v:Math.round(100*sSb), d:(drop>0?"−":"+")+Math.abs(drop).toFixed(1)+" °C"}
+  }, freni:{pGelo,pCald,pSecc}, tMed, pIn, bil};
+}
+
+function serieIndice(d){
+  const out=[];
+  for(let t=IDX_START;t<d.time.length;t++) out.push({data:d.time[t],val:indiceGiorno(d,t).val,pioggia:d.precipitation_sum[t]??0,futuro:t>PAST});
+  return out;
+}
+
+const SCALA=[[0,"#5A6B5E"],[26,"#6E8B3D"],[45,"#A8A233"],[62,"#C98A3C"],[80,"#D9622B"]];
+const colore=v=>{let c=SCALA[0][1];for(const[s,k]of SCALA) if(v>=s) c=k; return c};
+const giudizio=v=>
+  v>=80?["Buttata in corso","Condizioni piene: pioggia, calore e sbalzo si sono allineati. È la settimana giusta."]:
+  v>=62?["Fungaia attiva","Il bosco sta producendo. Cerca versanti in ombra e impluvi, dove l'acqua si è fermata."]:
+  v>=45?["In salita","Qualcosa si muove, a macchie. Meglio le quote e le esposizioni più fresche."]:
+  v>=26?["Sotto soglia","Manca ancora l'innesco o il suolo è troppo asciutto. Rimanda di qualche giorno."]:
+  ["Fermo","Il micelio non ha di che lavorare. Serve una pioggia vera e poi due settimane."];
+
+/* =========================================================
+   3. STAGIONALITÀ — cosa cercare, per mese e per quota
+   ========================================================= */
+const SPECIE=[
+ {n:"Porcino nero",e:"Boletus aereus",m:[6,7,8,9,10],q:[0,900],  h:"Querce, lecci e castagni. Ama il caldo, esce prima degli altri porcini."},
+ {n:"Porcino estivo",e:"Boletus reticulatus",m:[5,6,7,8,9],q:[0,1200],h:"Latifoglie di collina. È il primo a comparire dopo i temporali estivi."},
+ {n:"Porcino",e:"Boletus edulis",m:[8,9,10,11],q:[600,2000], h:"Faggete e abetaie. Vuole suolo fresco e sbalzo termico marcato."},
+ {n:"Porcino dei pini",e:"Boletus pinophilus",m:[9,10,11],q:[400,1800],h:"Pinete e castagneti su terreno acido, spesso tra muschio e aghi."},
+ {n:"Ovolo buono",e:"Amanita caesarea",m:[7,8,9,10],q:[0,1000],h:"Querceti e castagneti caldi e assolati. Raccogli solo l'ovolo aperto e riconoscibile."},
+ {n:"Galletto",e:"Cantharellus cibarius",m:[6,7,8,9,10],q:[200,1800],h:"A gruppi tra muschio e felci, resiste bene anche con poca pioggia."},
+ {n:"Trombetta dei morti",e:"Craterellus cornucopioides",m:[9,10,11],q:[300,1500],h:"Faggete umide, mimetizzata nella lettiera. Cerca a terra, molto lentamente."},
+ {n:"Chiodino",e:"Armillaria mellea",m:[9,10,11,12],q:[0,1400],h:"A ciuffi su ceppaie e radici, arriva con i primi freddi. Va sempre bollito e scolato."},
+ {n:"Mazza di tamburo",e:"Macrolepiota procera",m:[8,9,10,11],q:[0,1500],h:"Radure, margini di bosco e pascoli. Solo il cappello, il gambo è fibroso."},
+ {n:"Sanguinello",e:"Lactarius deliciosus",m:[9,10,11],q:[300,1600],h:"Pinete: al taglio il latice è arancio carota."},
+ {n:"Prataiolo",e:"Agaricus campestris",m:[9,10,11],q:[0,1200],h:"Prati concimati e pascoli dopo le piogge. Attenzione alle amanite bianche."},
+ {n:"Pioppino",e:"Cyclocybe aegerita",m:[3,4,10,11,12],q:[0,800],h:"A cespi su pioppi e salici, anche in pianura."},
+ {n:"Spugnola",e:"Morchella spp.",m:[3,4,5],q:[0,1500],h:"Primaverile, su suoli disturbati e golene. Tossica da cruda."},
+ {n:"Prugnolo",e:"Calocybe gambosa",m:[4,5],q:[0,1400],h:"Cerchi nei prati e lungo le siepi, a primavera."}
+];
+const specieFor=(mese,quota)=>SPECIE.filter(s=>s.m.includes(mese)&&quota>=s.q[0]-150&&quota<=s.q[1]+250).slice(0,6);
+
+/* =========================================================
+   4. DATI — Open-Meteo, gratuito e senza chiave
+   ========================================================= */
+const API="https://api.open-meteo.com/v1/forecast";
+const VARS="precipitation_sum,temperature_2m_max,temperature_2m_min,temperature_2m_mean,et0_fao_evapotranspiration";
+const q=s=>document.querySelector(s);
+const store={
+  get(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch(e){return window.__m&&window.__m[k]||null}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){window.__m=window.__m||{};window.__m[k]=v}}
+};
+
+function url(lats,lons){
+  return `${API}?latitude=${lats.join(",")}&longitude=${lons.join(",")}&daily=${VARS}`+
+         `&past_days=${PAST}&forecast_days=${FUT}&timezone=Europe%2FRome`;
+}
+
+async function scarica(){
+  const r=await fetch(url(LUOGHI.map(l=>l.la),LUOGHI.map(l=>l.lo)));
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const j=await r.json();
+  const arr=Array.isArray(j)?j:[j];
+  return arr.map((o,i)=>{
+    const d=o.daily, oggi=indiceGiorno(d,PAST), serie=serieIndice(d);
+    const fut=serie.filter(s=>s.futuro);
+    return {...LUOGHI[i], quota:Math.round(o.elevation??600), daily:d, oggi, serie,
+            picco:fut.length?fut.reduce((a,b)=>b.val>a.val?b:a):null};
+  });
+}
+
+async function sonda(la,lo){
+  const r=await fetch(url([la.toFixed(4)],[lo.toFixed(4)]));
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const j=await r.json(); const o=Array.isArray(j)?j[0]:j; const d=o.daily;
+  const serie=serieIndice(d), fut=serie.filter(s=>s.futuro);
+  return {n:"Punto sondato", r:`${la.toFixed(3)}° N · ${lo.toFixed(3)}° E`, b:"rilievo dal punto scelto sulla mappa",
+          la,lo, quota:Math.round(o.elevation??0), daily:d, oggi:indiceGiorno(d,PAST), serie,
+          picco:fut.length?fut.reduce((a,b)=>b.val>a.val?b:a):null};
+}
+
+/* =========================================================
+   5. MAPPA
+   ========================================================= */
+let map, strato, cerchi=[], probeMode=false, markMode=false, probeMarker=null;
+/* Entrambe le fonti sono libere e non richiedono alcuna chiave.
+   Il tema scuro nasce da un filtro CSS applicato ai tasselli OSM. */
+const TILES={
+  scuro:{u:"https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+         a:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',x:18,sub:"abc",buio:true},
+  rilievo:{u:"https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+         a:'Carta &copy; <a href="https://opentopomap.org">OpenTopoMap</a> · dati &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',x:16,sub:"abc",buio:false}
+};
+let tipoTile="scuro";
+function metti(tipo){
+  if(strato) map.removeLayer(strato);
+  const T=TILES[tipo];
+  strato=L.tileLayer(T.u,{attribution:T.a,maxZoom:T.x,subdomains:T.sub}).addTo(map);
+  document.getElementById("map").classList.toggle("buio",T.buio);
+}
+
+function initMap(){
+  map=L.map("map",{zoomControl:false,attributionControl:true,minZoom:4.5,maxZoom:16});
+  // Inquadra l'Italia adattandosi alla forma dello schermo: su un telefono
+  // stretto e alto uno zoom fisso tagliava Piemonte e Liguria.
+  map.fitBounds([[36.5,6.4],[47.2,18.6]],{padding:[8,8]});
+  L.control.zoom({position:"topleft"}).addTo(map);
+  metti("scuro");
+  map.on("click",e=>{
+    if(!probeMode && !markMode) return;
+    const {lat,lng}=e.latlng;
+    if(lat<35.2||lat>47.3||lng<6.2||lng>19.0){toast("Scegli un punto dentro i confini italiani.");return}
+
+    if(markMode){
+      if(map.getZoom()<12){
+        toast("Avvicina la mappa: a questo zoom sbaglieresti di chilometri.");
+        return;
+      }
+      markMode=false;
+      const b=q("#btnMark"); b.classList.remove("armed"); b.textContent="Segna una fungaia";
+      const nome=prompt("Nome della fungaia (resta solo su questo telefono):","");
+      if(nome!==null) nuovaFungaia(lat,lng,nome.trim(),{precisione:null,origine:"mappa"});
+      return;
+    }
+
+    probeMode=false; q("#btnProbe").classList.remove("armed"); q("#btnProbe").textContent="Sonda un punto";
+    if(probeMarker) map.removeLayer(probeMarker);
+    probeMarker=L.circleMarker([lat,lng],{radius:8,color:"#F2EFE4",weight:2,fillColor:"#C98A3C",fillOpacity:.9}).addTo(map);
+    toast("Calcolo l'indice per il punto…");
+    sonda(lat,lng).then(apri).catch(()=>toast("Dati non raggiungibili per quel punto."));
+  });
+}
+
+function disegna(dati){
+  cerchi.forEach(c=>map.removeLayer(c)); cerchi=[];
+  const top=[...dati].sort((a,b)=>b.oggi.val-a.oggi.val).slice(0,3).map(d=>d.n);
+  dati.forEach(d=>{
+    const v=d.oggi.val, c=colore(v);
+    if(top.includes(d.n)&&v>45){
+      const p=L.circleMarker([d.la,d.lo],{radius:9,color:c,weight:1.6,fill:false,opacity:.55,className:"pulse",interactive:false}).addTo(map);
+      cerchi.push(p);
+    }
+    const m=L.circleMarker([d.la,d.lo],{
+      radius:6+v/12, color:"#14180F", weight:1.4, fillColor:c, fillOpacity:.92
+    }).addTo(map);
+    m.bindTooltip(`${d.n} · ${v}`,{direction:"top",offset:[0,-6],className:"tt"});
+    collegaAnteprima(m,d);
+    m.on("click",e=>{
+      if(matchMedia("(hover:none),(pointer:coarse)").matches){
+        if(e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
+        mpShow(d,e.latlng);
+      }else{
+        apri(d);
+      }
+    });
+    cerchi.push(m);
+  });
+
+  // Fungaie personali: marcatore chiaro, distinto dai comprensori
+  mie().forEach(f=>{
+    const m=L.circleMarker([f.la,f.lo],{
+      radius:7, color:"#F2EFE4", weight:2.4, fillColor:"#14180F", fillOpacity:.85
+    }).addTo(map);
+    m.bindTooltip("★ "+f.nome,{direction:"top",offset:[0,-6],className:"tt"});
+    m.on("click",()=>vaiScheda("mie"));
+    cerchi.push(m);
+  });
+}
+
+/* =========================================================
+   6. GRAFICA DEL PANNELLO
+   ========================================================= */
+function gauge(v){
+  const R=52,ri=27,ro=45,N=54,att=Math.round(N*v/100),c=colore(v);
+  let g="";
+  for(let i=0;i<N;i++){
+    const a=(i/N)*2*Math.PI-Math.PI/2;
+    const x1=R+ri*Math.cos(a),y1=R+ri*Math.sin(a),x2=R+ro*Math.cos(a),y2=R+ro*Math.sin(a);
+    g+=`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${i<att?c:"#2B331F"}" stroke-width="2.6" stroke-linecap="round"/>`;
+  }
+  return `<svg width="104" height="104" viewBox="0 0 104 104" role="img" aria-label="Indice ${v} su 100">
+    ${g}<text x="52" y="52" text-anchor="middle" dominant-baseline="central" fill="${c}"
+    font-family="Space Mono, monospace" font-size="27" font-weight="700">${v}</text>
+    <text x="52" y="70" text-anchor="middle" fill="#8C947E" font-family="Archivo,sans-serif" font-size="8.5" letter-spacing="1.2">SU 100</text></svg>`;
+}
+
+function timeline(serie,W){
+  W=Math.max(300,Math.round(W||340));
+  const H=214, ml=32, mr=36, mt=16, mb=26;
+  const iTop=mt, iBot=mt+104;                 // fascia dell'indice
+  const rBot=H-mb, rTop=rBot-52;              // fascia delle piogge
+  const n=serie.length, pw=(W-ml-mr)/n;
+  const cx=i=>ml+pw*(i+.5);
+  const yi=v=>iBot-(v/100)*(iBot-iTop);
+  const maxP=Math.max(8,...serie.map(s=>s.pioggia));
+  const yr=p=>rBot-(p/maxP)*(rBot-rTop);
+
+  let g="",barre="",xlab="";
+  [0,50,100].forEach(v=>{
+    g+=`<line x1="${ml}" y1="${yi(v)}" x2="${W-mr}" y2="${yi(v)}" stroke="#2B331F" stroke-width="1"/>`
+     + `<text x="${ml-7}" y="${yi(v)+3.5}" text-anchor="end" fill="#6F7867" font-family="Space Mono,monospace" font-size="10">${v}</text>`;
+  });
+  g+=`<line x1="${ml}" y1="${rBot}" x2="${W-mr}" y2="${rBot}" stroke="#2B331F" stroke-width="1"/>`
+   + `<text x="${W-mr+6}" y="${rTop+4}" fill="#5F7E9E" font-family="Space Mono,monospace" font-size="10">${Math.round(maxP)}</text>`
+   + `<text x="${W-mr+6}" y="${rBot+4}" fill="#6F7867" font-family="Space Mono,monospace" font-size="10">mm</text>`;
+
+  const passo=Math.max(1,Math.ceil(n/7));
+  serie.forEach((s,i)=>{
+    const bw=Math.max(2.5,pw*0.62), x=cx(i)-bw/2, y=yr(s.pioggia);
+    if(s.pioggia>0.05) barre+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${(rBot-y).toFixed(1)}" fill="${s.futuro?"#3B5570":"#4E7EA8"}" rx="1.5"/>`;
+    if(i%passo===0||(i===n-1 && (n-1)%passo>passo*0.5)){
+      const d=new Date(s.data);
+      xlab+=`<text x="${cx(i).toFixed(1)}" y="${H-8}" text-anchor="middle" fill="#6F7867" font-family="Space Mono,monospace" font-size="10">${d.getDate()}/${d.getMonth()+1}</text>`;
+    }
+  });
+
+  const idxOggi=serie.findIndex(s=>s.futuro)-1;
+  const tagl=idxOggi<0?n-1:idxOggi;
+  const seg=(a,b)=>serie.slice(a,b+1).map((s,k)=>(k?"L":"M")+cx(a+k).toFixed(1)+" "+yi(s.val).toFixed(1)).join(" ");
+  const area=`${seg(0,tagl)} L ${cx(tagl).toFixed(1)} ${iBot} L ${cx(0).toFixed(1)} ${iBot} Z`;
+
+  const best=serie.reduce((a,b)=>b.val>a.val?b:a), bi=serie.indexOf(best);
+  const xo=cx(tagl)+pw/2;
+  const et=s=>{const d=new Date(s.data);return d.getDate()+"/"+(d.getMonth()+1)};
+
+  return `<svg class="tl" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img"
+    aria-label="Indice di buttata da ${et(serie[0])} a ${et(serie[n-1])}, picco il ${et(best)} a quota ${best.val}">
+    ${g}
+    <path d="${area}" fill="#C98A3C" opacity=".07"/>
+    ${barre}
+    <line x1="${xo.toFixed(1)}" y1="${iTop-6}" x2="${xo.toFixed(1)}" y2="${rBot}" stroke="#F2EFE4" stroke-width="1" stroke-dasharray="3 4" opacity=".45"/>
+    <text x="${(xo+5).toFixed(1)}" y="${iTop-1}" fill="#F2EFE4" font-family="Space Mono,monospace" font-size="10" opacity=".6">oggi</text>
+    <path d="${seg(0,tagl)}" fill="none" stroke="#C98A3C" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${seg(tagl,n-1)}" fill="none" stroke="#C98A3C" stroke-width="2.4" stroke-dasharray="5 4" stroke-linejoin="round" stroke-linecap="round" opacity=".8"/>
+    <circle cx="${cx(bi).toFixed(1)}" cy="${yi(best.val).toFixed(1)}" r="4.5" fill="#C98A3C" stroke="#14180F" stroke-width="1.6"/>
+    <text x="${cx(bi).toFixed(1)}" y="${(yi(best.val)-10).toFixed(1)}" text-anchor="middle" fill="#C98A3C" font-family="Space Mono,monospace" font-size="11" font-weight="700">${best.val}</text>
+    <circle cx="${cx(tagl).toFixed(1)}" cy="${yi(serie[tagl].val).toFixed(1)}" r="3.4" fill="#14180F" stroke="#C98A3C" stroke-width="2"/>
+    ${xlab}
+  </svg>`;
+}
+
+function apri(d){
+  CORRENTE=d;
+  const [tit,txt]=giudizio(d.oggi.val);
+  q("#shTitle").textContent=d.n;
+  q("#shSub").textContent=`${d.r} · ${d.quota} m · ${d.b}`;
+  const mese=new Date().getMonth()+1, sp=specieFor(mese,d.quota);
+  const p=d.oggi.parti;
+  const freni=[];
+  if(d.oggi.freni.pSecc<1) freni.push("dodici giorni quasi senza pioggia: il suolo non trattiene");
+  if(d.oggi.freni.pCald<1) freni.push("punte di calore recenti che asciugano la lettiera");
+  if(d.oggi.freni.pGelo<1) freni.push("gelate negli ultimi giorni che fermano il micelio");
+
+  q("#shBody").innerHTML=`
+   <div class="gauge">${gauge(d.oggi.val)}
+     <div><p class="verdict">${tit}</p><p>${txt}</p></div></div>
+
+   ${freni.length?`<div class="note warn">Cosa frena: ${freni.join("; ")}.</div>`:""}
+
+   <div id="decisionLayer"></div>
+   <button class="tech-toggle" id="techToggle" onclick="toggleDatiTecnici()">▾ Voglio vedere i dati tecnici</button>
+   <div class="tech-details" id="techDetails"><div class="sec"><h3>Da cosa nasce l'indice</h3>
+     ${Object.entries(p).map(([k,o])=>`
+       <div class="bar"><div class="lbl"><span>${k}</span><span>${o.d}</span></div>
+       <div class="track"><i style="width:${o.v}%;background:${colore(o.v)}"></i></div></div>`).join("")}
+   </div>
+
+   <div class="sec"><h3>Piogge e previsione a sette giorni</h3>
+     ${timeline(d.serie, (q("#shBody").clientWidth||372)-32)}
+     <div class="tlkey"><span><b style="background:#4E7EA8"></b>pioggia caduta</span>
+       <span><b style="background:#3B5570"></b>pioggia prevista</span>
+       <span><b style="background:#C98A3C"></b>indice di buttata</span></div>
+     ${d.picco?`<div class="note">Giorno migliore in vista: <b>${new Date(d.picco.data).toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"})}</b>, indice ${d.picco.val}.</div>`:""}
+     <div class="stat">
+       <div><b>${d.oggi.pIn.toFixed(0)}</b><span>mm d'innesco</span></div>
+       <div><b>${d.oggi.tMed.toFixed(1)}</b><span>°C medi</span></div>
+       <div><b>${d.oggi.bil>0?"+":""}${d.oggi.bil.toFixed(0)}</b><span>bilancio idrico</span></div>
+     </div>
+   </div>
+
+   </div>
+
+   <div class="sec"><h3>Report del bosco · da data a data</h3>
+     <p style="font-size:13px;color:var(--nebbia);margin-bottom:10px">
+       Non guarda solo oggi: ricostruisce l'acqua arrivata al suolo, la risposta termica e la finestra di fruttificazione nel periodo scelto.
+     </p>
+     <div class="reportbox">
+       <div class="period-presets">
+         <button onclick="presetReport(7,this)">7 giorni</button>
+         <button onclick="presetReport(14,this)">14 giorni</button>
+         <button class="active" onclick="presetReport(21,this)">21 giorni</button>
+         <button onclick="presetReport(0,this)">Personalizzato</button>
+       </div>
+       <div class="reportcontrols">
+         <div><label>Dal</label><input type="date" id="repFrom"></div>
+         <div><label>Al</label><input type="date" id="repTo"></div>
+         <button onclick="generaReportPeriodo()">Analizza il periodo</button>
+       </div>
+       <div id="reportBosco"><p style="color:var(--nebbia);font-size:13px;margin:12px 0 0">Scegli il periodo. Per capire una buttata sono particolarmente utili le due-tre settimane precedenti.</p></div>
+     </div>
+   </div>
+
+   <div class="sec"><h3>Cosa cercare adesso · ${d.quota} m</h3>
+     ${sp.length?sp.map(s=>`<div class="sp"><span class="dot"></span><div>
+        <h4>${s.n} <em>${s.e}</em></h4><p>${s.h}</p></div></div>`).join("")
+      :`<p style="color:var(--nebbia);font-size:13.5px">In questo mese e a questa quota non c'è una specie tipica da segnalare.</p>`}
+     <div class="note warn">Fai controllare il raccolto all'Ispettorato micologico dell'ASL prima di mangiarlo. L'app non identifica le specie: <a href="#" onclick="vaiInfo();return false" style="color:var(--porcino)">leggi le avvertenze</a>.</div>
+   </div>
+
+   <div class="sec"><h3>Cosa dice la norma in ${d.r}</h3>
+     <div class="nbox">${schedaRegione(d.r,true)}</div>
+     <button class="btn ghost" style="width:100%;text-align:center;margin-top:12px" onclick="vaiNorme('${d.r.replace(/'/g,"\\'")}')">Apri la scheda completa</button>
+   </div>
+
+   <button class="btn ghost" style="width:100%;text-align:center;margin-top:12px" onclick="nuovaFungaia(${d.la},${d.lo},prompt('Nome della fungaia:','${d.n.replace(/'/g,"")}')||'${d.n.replace(/'/g,"")}')">Salva come mia fungaia</button>
+
+   <button class="btn ghost" style="width:100%;text-align:center;margin-top:10px" onclick="apriMappaEsterna(${d.la},${d.lo})">Apri nelle mappe del telefono</button>
+  `;
+  q("#sheet").classList.add("open");
+  document.body.style.overflow="hidden";
+  setTimeout(()=>{inizializzaReportDate(d);renderDecisione(d)},0);
+}
+function vaiScheda(v){
+  document.querySelectorAll(".tab").forEach(t=>{
+    const on=t.dataset.v===v;
+    t.setAttribute("aria-selected",on);
+    if(on) t.scrollIntoView({block:"nearest",inline:"center"});
+  });
+  document.querySelectorAll(".view").forEach(s=>s.classList.toggle("on",s.id==="v-"+v));
+  const el=q("#v-"+v); if(el) el.scrollTop=0;
+}
+function vaiInfo(){ q("#shClose").click(); vaiScheda("info"); }
+function vaiNorme(reg){
+  q("#shClose").click();
+  vaiScheda("rules");
+  const s=q("#selReg");
+  if(s && [...s.options].some(o=>o.value===reg)){ s.value=reg; s.onchange(); }
+}
+function apriMappaEsterna(la,lo){
+  const u=/iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent)
+    ?`https://maps.apple.com/?ll=${la},${lo}&q=Zona%20di%20raccolta`
+    :`https://www.google.com/maps/search/?api=1&query=${la},${lo}`;
+  window.open(u,"_blank","noopener");
+}
+
+/* =========================================================
+   7. ELENCHI
+   ========================================================= */
+function scheda(d,i){
+  return `<button class="card" data-n="${encodeURIComponent(d.n)}">
+    ${i!=null?`<span class="rank">${String(i+1).padStart(2,"0")}</span>`:""}
+    <span class="val" style="color:${colore(d.oggi.val)}">${d.oggi.val}<small>INDICE</small></span>
+    <span style="flex:1;min-width:0"><h3>${d.n}</h3>
+      <p>${d.r} · ${d.quota} m${d.dist!=null?` · ${d.dist.toFixed(0)} km`:""}</p></span>
+  </button>`;
+}
+function renderList(dati){
+  const o=[...dati].sort((a,b)=>b.oggi.val-a.oggi.val);
+  q("#listBox").innerHTML=
+    `<h2 style="font-size:20px;margin-bottom:3px">Dove sta buttando</h2>
+     <p style="color:var(--nebbia);font-size:13px;margin:0 0 16px">${LUOGHI.length} comprensori vocati, ordinati per indice di oggi.</p>`
+    + o.map(scheda).join("");
+  aggancia("#listBox",dati);
+}
+function aggancia(sel,dati){
+  document.querySelectorAll(sel+" .card").forEach(b=>{
+    b.onclick=()=>{const n=decodeURIComponent(b.dataset.n);const d=dati.find(x=>x.n===n);if(d)apri(d)};
+  });
+}
+const km=(a,b,c,d)=>{const R=6371,r=x=>x*Math.PI/180,dA=r(c-a),dB=r(d-b);
+  const h=Math.sin(dA/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dB/2)**2;return 2*R*Math.asin(Math.sqrt(h))};
+
+function renderNear(dati){
+  const box=q("#nearBox");
+  box.innerHTML=`<div class="msg"><b>Cerca vicino a te</b>La posizione resta sul telefono: serve solo per ordinare i comprensori per distanza.<br><button class="btn" id="geo">Usa la mia posizione</button></div>`;
+  q("#geo").onclick=()=>{
+    if(!navigator.geolocation){toast("Il browser non espone la posizione.");return}
+    box.innerHTML=`<div class="msg">Cerco la posizione…</div>`;
+    navigator.geolocation.getCurrentPosition(p=>{
+      const {latitude:la,longitude:lo}=p.coords;
+      const o=dati.map(d=>({...d,dist:km(la,lo,d.la,d.lo)})).sort((a,b)=>a.dist-b.dist).slice(0,12);
+      box.innerHTML=`<h2 style="font-size:20px;margin-bottom:3px">I dodici più vicini</h2>
+        <p style="color:var(--nebbia);font-size:13px;margin:0 0 16px">In linea d'aria dalla tua posizione.</p>`
+        +o.map(d=>scheda(d)).join("")
+        +`<button class="btn ghost" style="width:100%;text-align:center;margin-top:6px" id="probeHere">Calcola l'indice esattamente qui</button>`;
+      aggancia("#nearBox",dati);
+      q("#probeHere").onclick=()=>{toast("Calcolo l'indice per la tua posizione…");sonda(la,lo).then(apri).catch(()=>toast("Dati non raggiungibili."))};
+      if(map){map.setView([la,lo],9);}
+    },()=>{
+      box.innerHTML=`<div class="msg"><b>Posizione non disponibile</b>Hai negato il permesso, oppure il segnale è assente. Puoi comunque toccare un punto sulla mappa con “Sonda un punto”.</div>`;
+    },{timeout:9000,enableHighAccuracy:false});
+  };
+}
+
+/* =========================================================
+   7ter. LE MIE FUNGAIE
+   I posti restano sul dispositivo: non esiste un server dove
+   finirebbero, e nel mondo dei funghi la segretezza non è un
+   dettaglio. L'app confronta le uscite registrate con l'indice
+   calcolato quel giorno e tara il modello su quel bosco.
+   ========================================================= */
+const ESITI=[
+  {v:0,n:"Niente",   c:"#5A6B5E", d:"nessuna traccia"},
+  {v:1,n:"Primi sentori",c:"#A8A233", d:"qualche primordio, buttata in arrivo"},
+  {v:2,n:"Buttata",  c:"#D9622B", d:"raccolto pieno"}
+];
+const mie=()=>store.get("fungaie")||[];
+const salvaMie=a=>store.set("fungaie",a);
+
+function nuovaFungaia(la,lo,nome,extra){
+  const a=mie();
+  a.push(Object.assign({
+    id:"f"+Date.now(), nome:nome||"Fungaia senza nome",
+    la:+la.toFixed(6), lo:+lo.toFixed(6), oss:[]
+  }, extra||{}));
+  salvaMie(a);
+  if(DATI) disegna(DATI);
+  renderMie();
+  toast("Fungaia salvata sul dispositivo.");
+}
+
+/* Posizione GPS reale: è l'unico modo per avere metri invece di
+   chilometri. Il tocco sulla mappa serve per segnare da casa. */
+function salvaQui(){
+  if(!navigator.geolocation){ toast("Questo dispositivo non espone la posizione."); return; }
+  toast("Cerco la posizione col GPS, resta fermo qualche secondo…");
+  navigator.geolocation.getCurrentPosition(p=>{
+    const c=p.coords, acc=Math.round(c.accuracy||0);
+    if(acc>60 && !confirm(`Il GPS dà una precisione di circa ${acc} metri, che sotto le chiome è normale ma non è granché.\n\nSalvare comunque? Con più cielo libero migliora.`)) return;
+    const nome=prompt(`Posizione acquisita, precisione ${acc} m.\nNome della fungaia:`,"");
+    if(nome===null) return;
+    nuovaFungaia(c.latitude, c.longitude, nome.trim(), {
+      precisione:acc,
+      quota:(c.altitude!=null && isFinite(c.altitude))?Math.round(c.altitude):null,
+      origine:"gps"
+    });
+    if(map) map.setView([c.latitude,c.longitude],15);
+  }, err=>{
+    toast(err.code===1?"Permesso di posizione negato.":"Posizione non disponibile: prova all'aperto.");
+  }, {enableHighAccuracy:true, timeout:25000, maximumAge:0});
+}
+
+function rinomina(id){
+  const a=mie(), f=a.find(x=>x.id===id);
+  if(!f) return;
+  const n=prompt("Nuovo nome della fungaia:",f.nome);
+  if(n===null) return;
+  f.nome=n.trim()||f.nome;
+  salvaMie(a); renderMie();
+  if(DATI) disegna(DATI);
+}
+
+async function registra(id,esito){
+  const a=mie(), f=a.find(x=>x.id===id);
+  if(!f) return;
+  toast("Registro l'uscita…");
+  let indice=null, scarto=null;
+  try{
+    const d=await sonda(f.la,f.lo);
+    indice=d.oggi.val;
+    if(d.picco){
+      const oggi=new Date(); oggi.setHours(0,0,0,0);
+      scarto=Math.round((new Date(d.picco.data)-oggi)/864e5);
+    }
+  }catch(e){ toast("Uscita registrata senza indice: rete assente."); }
+  const L=faseLunare(new Date());
+  f.oss.unshift({data:new Date().toISOString().slice(0,10), esito, indice, scarto,
+                 quarto:L.quarto, fase:L.fase});
+  salvaMie(a); renderMie(); renderLuna();
+}
+
+function elimina(id){
+  if(!confirm("Eliminare questa fungaia e tutte le sue uscite? L'operazione non si può annullare.")) return;
+  salvaMie(mie().filter(x=>x.id!==id));
+  if(DATI) disegna(DATI);
+  renderMie();
+}
+
+/* Taratura: confronta gli indici delle uscite andate a buon fine
+   con quelli delle uscite a vuoto, e lo scarto rispetto al picco. */
+function taratura(f){
+  const o=f.oss||[];
+  if(o.length<3) return `<p class="cal">Servono almeno tre uscite registrate per tarare questa fungaia. Ne hai ${o.length}.</p>`;
+  const con=o.filter(x=>x.esito>=1 && x.indice!=null);
+  const senza=o.filter(x=>x.esito===0 && x.indice!=null);
+  if(!con.length) return `<p class="cal">Nessuna uscita positiva registrata: per ora l'app non ha nulla su cui tarare.</p>`;
+  const soglia=Math.min(...con.map(x=>x.indice));
+  const maxVuoto=senza.length?Math.max(...senza.map(x=>x.indice)):null;
+  const scarti=con.filter(x=>x.scarto!=null).map(x=>x.scarto);
+  const ant=scarti.length?scarti.reduce((s,v)=>s+v,0)/scarti.length:null;
+  let t=`In questa fungaia hai trovato funghi a partire da un indice di <b>${soglia}</b>`;
+  t+= maxVuoto!=null ? `, e sei tornato a mani vuote fino a <b>${maxVuoto}</b>.` : ".";
+  if(ant!=null && ant>1.5) t+=` Le tue uscite positive cadono in media <b>${ant.toFixed(0)} giorni prima</b> del picco calcolato: questo bosco anticipa il modello.`;
+  else if(ant!=null && ant<-1.5) t+=` Le tue uscite positive cadono in media <b>${Math.abs(ant).toFixed(0)} giorni dopo</b> il picco calcolato: questo bosco è più lento della media.`;
+  else if(ant!=null) t+=` I tempi coincidono con il picco calcolato.`;
+  return `<p class="cal">${t}</p>`;
+}
+
+function schedaMia(f){
+  const o=f.oss||[], ult=o[0];
+  const e=ult?ESITI[ult.esito]:null;
+  return `<div class="card mia">
+    <div class="miahead">
+      <div style="flex:1;min-width:0">
+        <h3>${f.nome}</h3>
+        <p>${f.la.toFixed(5)}° N · ${f.lo.toFixed(5)}° E${f.precisione?` · ±${f.precisione} m`:""}${f.quota!=null?` · ${f.quota} m slm`:""} · ${o.length} ${o.length===1?"uscita":"uscite"}</p>
+      </div>
+      ${e?`<span class="pill" style="background:${e.c}22;color:${e.c};border-color:${e.c}55">${e.n}</span>`:""}
+    </div>
+    ${taratura(f)}
+    <p class="cal2">Registra l'uscita di oggi</p>
+    <div class="btnrow">
+      ${ESITI.map(x=>`<button class="mini" style="border-color:${x.c}66" onclick="registra('${f.id}',${x.v})">${x.n}</button>`).join("")}
+    </div>
+    ${o.length?`<details class="stor"><summary>Storico delle uscite</summary>
+      ${o.slice(0,20).map(x=>`<div class="orow"><span>${new Date(x.data).toLocaleDateString("it-IT",{day:"numeric",month:"short"})}</span>
+        <b style="color:${ESITI[x.esito].c}">${ESITI[x.esito].n}</b>
+        <em>${x.indice!=null?"indice "+x.indice:"—"}${x.fase?" · "+x.fase.toLowerCase():""}</em></div>`).join("")}
+    </details>`:""}
+    <div class="btnrow" style="margin-top:10px">
+      <button class="mini" onclick="apriMappaEsterna(${f.la},${f.lo})">Vai sul posto</button>
+      <button class="mini" onclick="rinomina('${f.id}')">Rinomina</button>
+      <button class="mini danger" onclick="elimina('${f.id}')">Elimina</button>
+    </div>
+  </div>`;
+}
+
+function renderMie(){
+  const a=mie(), box=q("#mieBox");
+  box.innerHTML=`
+   <h2 style="font-size:20px;margin-bottom:3px">Le mie fungaie</h2>
+   <p style="color:var(--nebbia);font-size:13px;margin:0 0 14px">Posizioni e uscite restano su questo dispositivo. Non esistono su nessun server e nessuno può vederle.</p>
+
+   <div class="btnrow" style="margin-bottom:6px">
+     <button class="mini" style="border-color:#6E8B3D;flex:2" onclick="salvaQui()">Sono qui: salva col GPS</button>
+     <button class="mini" onclick="vaiScheda('map')">Segna sulla mappa</button>
+   </div>
+   <p class="nsrc" style="margin:0 0 18px">Il GPS dà una precisione di pochi metri e va usato quando sei sul posto. Il tocco sulla mappa serve per segnare da casa un punto che già conosci, ed è preciso quanto lo zoom che stai usando.</p>
+
+   ${avvisoBackup()}
+
+   ${a.length ? a.map(schedaMia).join("")
+     : `<div class="msg"><b>Nessuna fungaia salvata</b>Quando sei in un posto che conosci, tocca «Sono qui». Poi, a ogni uscita, registra in due tocchi cosa hai trovato: dopo qualche volta l'app tara l'indice su quel bosco.</div>`}
+
+   <div class="btnrow" style="margin-top:18px">
+     <button class="mini" onclick="esportaMie()">Esporta una copia</button>
+     <button class="mini" onclick="document.getElementById('fileImport').click()">Importa</button>
+   </div>
+
+   <div class="note warn"><b>Dove vivono davvero questi dati.</b> Stanno nella memoria del browser, non in un account. Significa che nessuno può leggerli, ma anche che nessuno può recuperarteli. Su iPhone, se apri l'app dal browser senza averla aggiunta alla schermata Home, Safari può cancellare quella memoria dopo alcuni giorni di inutilizzo: aggiungila alla Home e il problema non si pone. In ogni caso esporta una copia ogni tanto e mandatela per mail: è un file di pochi kilobyte.</div>
+
+   <div class="note">Perché serve registrare. Il modello meteo non sa dove sia il micelio né com'è esposto il versante: quello lo sai solo tu che ci vai. Registrando le uscite, l'app impara la soglia e i tempi della tua fungaia e corregge la previsione generale.</div>`;
+}
+
+async function esportaMie(){
+  const a=mie();
+  if(!a.length){ toast("Non c'è ancora nulla da esportare."); return; }
+  const dati=JSON.stringify({app:"MUSHROOM",versione:APP_VER,esportato:new Date().toISOString(),fungaie:a},null,2);
+  const nome="mie-fungaie-"+new Date().toISOString().slice(0,10)+".json";
+
+  // Su telefono la condivisione nativa permette di mandarlo su File,
+  // Drive, mail o a se stessi: molto più sicuro di una cartella Download.
+  try{
+    const file=new File([dati],nome,{type:"application/json"});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:"Le mie fungaie"});
+      store.set("ultimoExport",Date.now()); renderMie();
+      return;
+    }
+  }catch(e){ if(e && e.name==="AbortError") return; }
+
+  const url=URL.createObjectURL(new Blob([dati],{type:"application/json"}));
+  const el=document.createElement("a");
+  el.href=url; el.download=nome; el.click();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+  store.set("ultimoExport",Date.now()); renderMie();
+  toast("File salvato.");
+}
+
+function avvisoBackup(){
+  const n=mie().length;
+  if(!n) return "";
+  const t=store.get("ultimoExport");
+  if(!t) return `<div class="note warn"><b>Non hai mai salvato una copia.</b> Le fungaie esistono solo dentro questo telefono: se lo perdi, lo cambi o svuoti i dati del sito, spariscono e non sono recuperabili da nessuna parte. Tocca «Esporta» e mandati il file per mail o su Drive.</div>`;
+  const g=Math.floor((Date.now()-t)/864e5);
+  if(g>30) return `<div class="note warn"><b>Ultima copia ${g} giorni fa.</b> Da allora hai aggiunto uscite che esistono solo qui. Riesporta.</div>`;
+  return `<p class="nsrc">Ultima copia esterna: ${g===0?"oggi":g===1?"ieri":g+" giorni fa"}.</p>`;
+}
+
+q("#fileImport").addEventListener("change",ev=>{
+  const file=ev.target.files&&ev.target.files[0];
+  if(!file) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const j=JSON.parse(r.result);
+      if(!Array.isArray(j.fungaie)) throw 0;
+      const esistenti=mie(), noti=new Set(esistenti.map(x=>x.id));
+      const agg=j.fungaie.filter(x=>x&&x.id&&!noti.has(x.id));
+      salvaMie(esistenti.concat(agg));
+      if(DATI) disegna(DATI);
+      renderMie();
+      toast(agg.length?`Importate ${agg.length} fungaie.`:"Nessuna fungaia nuova da importare.");
+    }catch(e){ toast("File non valido."); }
+    ev.target.value="";
+  };
+  r.readAsText(file);
+});
+/* =========================================================
+   7quater. LUNA — calcolo locale della fase e verifica sui dati
+   Nessuna chiamata di rete: il ciclo sinodico è aritmetica.
+   ========================================================= */
+const SINODICO=29.530588853;
+const NOVILUNIO=Date.UTC(2000,0,6,18,14,0);   // novilunio di riferimento
+const FASI=["Luna nuova","Crescente","Primo quarto","Gibbosa crescente",
+            "Luna piena","Gibbosa calante","Ultimo quarto","Calante"];
+const QUARTI=["Nuova","Crescente","Piena","Calante"];
+
+function faseLunare(d){
+  const eta=((((d.getTime()-NOVILUNIO)/864e5)%SINODICO)+SINODICO)%SINODICO;
+  // I quarti sono centrati sulla fase, non tagliati a partire dal novilunio:
+  // il giorno 29 è "nuova", non "calante".
+  const q=Math.floor((((eta+SINODICO/8)%SINODICO))/(SINODICO/4))%4;
+  return {eta, fase:FASI[Math.floor(eta/SINODICO*8+0.5)%8], quarto:q};
+}
+
+/* Conteggio sulle uscite dell'utente: quante volte ha trovato funghi
+   in ciascun quarto lunare, rapportato a quante volte è uscito. */
+function conteggioLuna(){
+  const righe=[[0,0],[0,0],[0,0],[0,0]];
+  mie().forEach(f=>(f.oss||[]).forEach(o=>{
+    const q = o.quarto!=null ? o.quarto : faseLunare(new Date(o.data)).quarto;
+    righe[q][0]++;
+    if(o.esito>=1) righe[q][1]++;
+  }));
+  const tot=righe.reduce((s,r)=>s+r[0],0);
+  return {righe,tot};
+}
+
+function boxConteggio(){
+  const {righe,tot}=conteggioLuna();
+  if(tot<12) return `<div class="note">Hai registrato <b>${tot}</b> ${tot===1?"uscita":"uscite"}. Da dodici in su questo riquadro comincia a mostrare il conteggio per fase lunare sulle tue fungaie. È l'unico modo serio di rispondere alla domanda: sui tuoi posti, con te come osservatore.</div>`;
+  const max=Math.max(...righe.map(r=>r[0]?r[1]/r[0]:0),0.01);
+  return `<div class="sec"><h3>Il conteggio sulle tue uscite</h3>
+    ${righe.map((r,i)=>{
+      const p=r[0]?r[1]/r[0]:0;
+      return `<div class="bar"><div class="lbl"><span>${QUARTI[i]}</span>
+        <span>${r[1]} su ${r[0]}${r[0]?" · "+Math.round(p*100)+"%":""}</span></div>
+        <div class="track"><i style="width:${Math.round(p/max*100)}%;background:#C98A3C"></i></div></div>`;
+    }).join("")}
+    <p class="nsrc">Percentuale di uscite in cui hai trovato almeno i primi sentori, per quarto lunare, su ${tot} uscite totali. Con numeri ancora piccoli differenze del dieci o venti per cento sono normale rumore statistico: servono due o tre stagioni perché il dato dica qualcosa.</p></div>`;
+}
+
+function renderLuna(){
+  const l=faseLunare(new Date());
+  q("#lunaBox").innerHTML=`
+   <h2 style="font-size:22px;margin-bottom:3px">Luna e credenze</h2>
+   <p style="color:var(--nebbia);font-size:13px;margin:0 0 6px">Cosa dice la tradizione, cosa dicono i dati, e cosa resta aperto.</p>
+   <p class="nsrc" style="margin-bottom:18px">Oggi: <b style="color:var(--porcino)">${l.fase}</b>, ${l.eta.toFixed(1)} giorni dal novilunio. La fase compare solo qui, non nella scheda delle località: se la vedessi prima di decidere se uscire, il conteggio qui sotto misurerebbe le tue aspettative invece dei funghi.</p>
+
+   <div class="sec"><h3>Cosa dice la tradizione</h3>
+     <p class="cal">Nelle campagne italiane si è tramandato per generazioni che le fasi lunari governino la fruttificazione dei porcini. Le versioni però non concordano fra loro, ed è già di per sé un indizio: in alcune valli dell'Appennino ligure si aspettava la luna crescente, per analogia con le maree; nel basso Piemonte e in parte della Toscana si dava valore alla calante, quando le notti sono più buie e il sottobosco più umido; altri raccoglitori evitavano il bosco con la luna nuova.</p>
+   </div>
+
+   <div class="sec"><h3>Lo studio che ha chiuso la questione</h3>
+     <p class="cal">Egli S., Ayer F., Merlini M. (2011), <em>More mushrooms under a full moon – myth or reality?</em>, Sydowia 63: 23–33. Istituto federale svizzero di ricerca per la foresta, la neve e il paesaggio (WSL).</p>
+     <div class="nrow"><span>Dati</span><p>1.715 rilevamenti datati, raccolti fra il 1990 e il 2007 in cinque aree di osservazione permanente della Svizzera occidentale, fra 500 e 1.350 metri di quota.</p></div>
+     <div class="nrow"><span>Metodo</span><p>Un solo micologo, un inventario completo a settimana da maggio a dicembre. Ogni carpoforo veniva marcato con blu di metilene sul cappello per non contarlo due volte. È la differenza rispetto a tutte le osservazioni aneddotiche precedenti: nessun bias di chi guarda e quando.</p></div>
+     <div class="nrow"><span>Ipotesi testate</span><p>Due. Se la produzione differisse fra luna crescente (giorni 1–14) e calante (15–29). E se attorno alla luna piena (giorni 11–20) i carpofori fossero più numerosi che nei restanti periodi. Test di Kruskal-Wallis.</p></div>
+     <div class="nrow"><span>Risultato</span><p>Nessuna relazione. I valori di p vanno da 0,24 a 0,99, tutti lontanissimi dalla soglia di significatività. Vale per ciascuna delle cinque aree, per tutte insieme, e separatamente per specie micorriziche e saprofite.</p></div>
+     <div class="nrow"><span>Il controllo più fine</span><p>Gli autori hanno rifatto l'analisi retrodatando ogni rilevamento di cinque giorni, per cogliere il momento dell'<em>innesco</em> del carpoforo e non quello in cui diventa visibile. Anche così: nulla. È il controllo che risponde all'obiezione più ovvia, cioè che la luna agisca sulla nascita e non sulla raccolta.</p></div>
+   </div>
+
+   <div class="sec"><h3>Il caso che sembrava dare ragione alla tradizione</h3>
+     <p class="cal">Nel 2000 Hirschmann e Hirschmann analizzarono 1.800 verbali di consulenza micologica raccolti in 32 anni e trovarono un andamento sinusoidale che seguiva il ciclo lunare. Conclusero che la correlazione esisteva.</p>
+     <p class="cal">Nel 2002 Guiard rianalizzò gli stessi dati. Il segnale c'era, ma non veniva dai funghi: era in parte un artefatto delle procedure di lisciamento dei dati, in parte l'effetto delle <b>abitudini di raccolta delle persone</b>. Non erano i funghi a seguire la luna: erano i cercatori.</p>
+     <p class="cal">È l'esito più istruttivo di tutta la vicenda, e spiega perché la credenza sia così solida. Chi va per funghi seguendo la luna trova funghi quando esce, e non trova nulla quando resta a casa.</p>
+   </div>
+
+   <div class="sec"><h3>Dove la luna conta davvero</h3>
+     <p class="cal">La tua obiezione di fondo è corretta: gli effetti lunari documentati esistono, e sono citati nello studio stesso. Solo che passano quasi tutti per due sole vie, la luce notturna e le maree.</p>
+     <ul class="rules">
+       <li><b>Organismi marini.</b> Ritmi lunari dimostrati nello zooplancton, nella melatonina dei pesci e nel comportamento in mare degli uccelli pelagici.</li>
+       <li><b>Animali notturni.</b> Pipistrelli, cavallette, tritoni e anfibi cambiano attività fra novilunio e plenilunio, per la diversa luce e per il rapporto preda-predatore.</li>
+       <li><b>Morsi e pronto soccorso veterinario.</b> Aumenti attorno al plenilunio documentati sul British Medical Journal e su riviste veterinarie: quasi certamente perché con più luce si sta più tempo all'aperto.</li>
+       <li><b>Alberi.</b> Qui il quadro è aperto. Zürcher e colleghi pubblicarono su <em>Nature</em> nel 1998 che il diametro del fusto di abeti rossi fluttua con le maree; Vesala e colleghi nel 2000 non replicarono il risultato su alberi in condizioni naturali. Nel 2010 lo stesso gruppo ha però misurato variazioni lievi ma statisticamente significative nel comportamento in essiccazione di abete rosso e castagno secondo la fase di taglio.</li>
+     </ul>
+     <p class="cal">Quest'ultimo punto merita onestà: sul legno qualcosa di misurabile è stato pubblicato. Sui funghi, con il metodo migliore disponibile, no.</p>
+   </div>
+
+   <div class="sec"><h3>Perché la regola funzionava lo stesso</h3>
+     <p class="cal">Il mese sinodico dura <b>29,53 giorni</b>. Fra una buttata e l'altra passano tipicamente dodici-quindici giorni. Un mese lunare contiene quindi due cicli di buttata quasi esatti.</p>
+     <p class="cal">Prima dei calendari appesi in cucina, la luna <em>era</em> il calendario contadino. Dire «si va con la luna nuova» significava dire «due settimane dopo l'ultima volta», che è esattamente la finestra di 6–16 giorni su cui pesa l'indice di questa app. La regola tramandata e il modello meteorologico dicono la stessa cosa in due lingue diverse: una la chiama luna, l'altra la chiama pioggia d'innesco.</p>
+   </div>
+
+   <div class="sec"><h3>Un parallelo che spiega la tenacia della credenza</h3>
+     <p class="cal">Il 68% degli infermieri dei reparti ostetrici interpellati in uno studio ritiene che il travaglio inizi più spesso con la luna piena. Le analisi su milioni di nascite hanno ripetutamente escluso qualsiasi relazione.</p>
+     <p class="cal">Sono osservatori esperti, che vedono parti tutti i giorni per anni. Se l'illusione regge in un reparto ospedaliero, regge a maggior ragione in un bosco, dove nessuno tiene un registro.</p>
+   </div>
+
+   <div class="sec"><h3>Cosa resta aperto</h3>
+     <p class="cal">Gli autori dello studio lo scrivono a chiare lettere: gran parte dei meccanismi di crescita dei funghi selvatici non è ancora compresa, e ciò che si sa sui geni della fruttificazione riguarda organismi modello da laboratorio, non i porcini di una faggeta.</p>
+     <p class="cal">Quello che invece è dimostrato è che la produzione di funghi di bosco dipende dalla crescita degli alberi ospiti, perché la maggior parte delle specie pregiate vive in simbiosi micorrizica e dipende dal carbonio che l'albero fissa con la fotosintesi. Il fungo segue l'albero, l'albero segue il clima.</p>
+   </div>
+
+   ${boxConteggio()}
+
+   <div class="note"><b>Come è costruito questo conteggio.</b> A ogni uscita registrata nelle tue fungaie l'app salva anche la fase lunare di quel giorno, calcolata in locale. Il riquadro mostra la percentuale di uscite andate a segno per ciascun quarto. Se dopo due stagioni sui tuoi posti emergesse uno sbilanciamento reale, sarebbe un dato tuo, raccolto con lo stesso metodo dello studio svizzero: stesso osservatore, stessi luoghi, registrazione sistematica.</div>
+
+   <p class="nsrc">Fonti: Egli, Ayer &amp; Merlini, Sydowia 63 (2011); Guiard, Zeitschrift für Anomalistik 2 (2002); Hirschmann &amp; Hirschmann, Natur und Mensch (2000); Zürcher et al., Nature 392 (1998) e Trees 24 (2010); Vesala et al., Tree Physiology 20 (2000); Egli et al., Annals of Forest Science 67 (2010).</p>`;
+}
+/* =========================================================
+   7bis. NORME — schede regionali con stato di verifica
+   ========================================================= */
+const N=()=>window.NORME||{regioni:{},nazionale:{}};
+const campo=(et,v)=>v?`<div class="nrow"><span>${et}</span><p>${v}</p></div>`:"";
+
+function badge(st){
+  return st==="verificato"
+    ? `<span class="tagv">verificato</span>`
+    : `<span class="tagd">da validare</span>`;
+}
+
+function schedaRegione(nome,compatta){
+  const r=N().regioni[nome];
+  if(!r) return `<div class="note">Nessuna scheda per ${nome}.</div>`;
+  const vuoti=["autorizzazione","limite","giorni","sanzioni"].filter(k=>!r[k]);
+  const mancanti=vuoti.length
+    ? `<div class="note warn"><b>Scheda incompleta.</b> Non risultano verificati: ${vuoti.join(", ")}. L'app non mostra dati non controllati. Consulta la fonte ufficiale.</div>` : "";
+  return `
+   <div class="nhead"><h3>${nome}</h3>${badge(r.stato)}</div>
+   ${r.legge?`<p class="nlaw">${r.legge_url?`<a href="${r.legge_url}" target="_blank" rel="noopener">${r.legge}</a>`:r.legge}</p>`:""}
+   ${r.nota?`<p class="nlaw">${r.nota}</p>`:""}
+   ${campo("Autorizzazione",r.autorizzazione)}
+   ${campo("Chi la rilascia",r.chi_rilascia)}
+   ${campo("Costo",r.costo)}
+   ${r.costo_nota?`<div class="nrow"><span>Nota sul costo</span><p>${r.costo_nota}</p></div>`:""}
+   ${campo("Limite giornaliero",r.limite)}
+   ${campo("Minori",r.minori)}
+   ${campo("Giorni consentiti",r.giorni)}
+   ${campo("Orari",r.orari)}
+   ${campo("Dove si può raccogliere",r.dove)}
+   ${campo("Sanzioni",r.sanzioni)}
+   ${mancanti}
+   <p class="nsrc">${r.verificato_il?`Verificato il ${r.verificato_il}. `:""}Fonte ufficiale: <a href="${r.ispra}" target="_blank" rel="noopener">scheda ISPRA della Regione</a>.</p>
+   ${compatta?"":`<div class="note">${N().avvertenza}</div>`}`;
+}
+
+function renderNorme(){
+  const box=q("#normeBox"), naz=N().nazionale, regs=Object.keys(N().regioni);
+  const ok=regs.filter(k=>N().regioni[k].stato==="verificato").length;
+  box.innerHTML=`
+   <h2 style="font-size:22px;margin-bottom:3px">Norme regionali</h2>
+   <p style="color:var(--nebbia);font-size:13px;margin:0 0 14px">${ok} schede su ${regs.length} verificate. Le altre riportano solo la fonte ufficiale.</p>
+
+   <label class="lbl2" for="selReg">Regione</label>
+   <select id="selReg">${regs.map(k=>`<option>${k}</option>`).join("")}</select>
+   <div id="regBox" class="nbox"></div>
+
+   <div class="sec"><h3>Quadro nazionale</h3>
+     <p class="nlaw"><a href="${naz.url}" target="_blank" rel="noopener">${naz.legge}</a> · ${naz.regolamento}</p>
+     <ul class="rules">${(naz.principi||[]).map(p=>`<li>${p}</li>`).join("")}</ul>
+     <p class="nsrc">Verificato il ${naz.verificato_il}. Fonte: <a href="${naz.fonte_url}" target="_blank" rel="noopener">${naz.fonte}</a>.</p>
+   </div>
+
+   <div class="note warn">
+     <b>Nessuna app riconosce i funghi al posto tuo.</b> Prima di consumare il raccolto fallo controllare da un <b>Ispettorato micologico dell'ASL</b>. Molte specie mortali somigliano a specie commestibili e la cottura non elimina le tossine. In caso di sospetto avvelenamento chiama il <b>112</b> e conserva i resti del fungo.
+   </div>
+   <div class="note">
+     <b>Come funziona l'indice.</b> Non esiste un sensore che misuri i funghi. L'app stima la probabilità di buttata dai dati meteo: pioggia d'innesco di 6–16 giorni fa, bilancio idrico del suolo, temperatura media e sbalzo termico. È una previsione agronomica, non una certezza.
+   </div>
+   <p class="nsrc">Base dati normativa versione ${N().versione} — ${N().redazione}.</p>`;
+  const sel=q("#selReg"), dis=()=>{q("#regBox").innerHTML=schedaRegione(sel.value)};
+  sel.onchange=dis;
+  const g=DATI&&CORRENTE&&regs.includes(CORRENTE.r)?CORRENTE.r:"Emilia-Romagna";
+  if(regs.includes(g)) sel.value=g;
+  dis();
+}
+/* =========================================================
+   8. AVVIO
+   ========================================================= */
+let DATI=null, CORRENTE=null;
+let _rz;
+window.addEventListener("resize",()=>{
+  clearTimeout(_rz);
+  _rz=setTimeout(()=>{ if(CORRENTE && q("#sheet").classList.contains("open")) apri(CORRENTE); },220);
+});
+function toast(t){const e=q("#toast");e.textContent=t;e.classList.add("on");clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove("on"),3200)}
+
+function stamp(ts){
+  q("#stampDate").textContent=
+    new Date(ts).toLocaleString("it-IT",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})
+    +" · v"+APP_VER;
+}
+
+async function carica(forza){
+  const c=store.get("cache");
+  if(!forza && c && Date.now()-c.ts < 3*3600*1000){
+    // ricalcolo dai dati grezzi: l'indice dipende dal giorno, non solo dal download
+    DATI=c.dati; usa(DATI); stamp(c.ts); return;
+  }
+  q("#refreshIcon").classList.add("spin");
+  q("#listBox").innerHTML=`<div class="skel"></div>`.repeat(6);
+  try{
+    DATI=await scarica();
+    store.set("cache",{ts:Date.now(),dati:DATI});
+    usa(DATI); stamp(Date.now());
+  }catch(err){
+    if(c){DATI=c.dati;usa(DATI);stamp(c.ts);toast("Rete assente: mostro l'ultimo rilevamento salvato.")}
+    else{
+      q("#listBox").innerHTML=`<div class="msg"><b>Dati non raggiungibili</b>Serve una connessione per il primo caricamento. Riprova quando sei in linea.<br><button class="btn" onclick="carica(true)">Riprova</button></div>`;
+      toast("Nessun dato disponibile.");
+    }
+  }finally{ q("#refreshIcon").classList.remove("spin"); }
+}
+function usa(d){ disegna(d); renderList(d); renderNear(d); }
+renderNorme();
+renderMie();
+renderLuna();
+(function versione(){
+  const a=q("#verApp"), b=q("#verData");
+  if(a) a.textContent="v"+APP_VER;
+  if(b) b.textContent=APP_DATA;
+})();
+
+document.querySelectorAll(".tab").forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll(".tab").forEach(x=>x.setAttribute("aria-selected",x===t));
+    document.querySelectorAll(".view").forEach(v=>v.classList.toggle("on",v.id==="v-"+t.dataset.v));
+    if(t.dataset.v==="map"&&map) setTimeout(()=>map.invalidateSize(),120);
+  };
+});
+q("#shClose").onclick=()=>{q("#sheet").classList.remove("open");document.body.style.overflow=""};
+q("#btnRefresh").onclick=()=>carica(true);
+q("#btnProbe").onclick=e=>{
+  probeMode=!probeMode; markMode=false;
+  const b=q("#btnMark"); b.classList.remove("armed"); b.textContent="Segna una fungaia";
+  e.currentTarget.classList.toggle("armed",probeMode);
+  e.currentTarget.textContent=probeMode?"Tocca la mappa":"Sonda un punto";
+  if(probeMode) toast("Tocca un punto qualsiasi: calcolo l'indice lì.");
+};
+q("#btnMark").onclick=e=>{
+  markMode=!markMode; probeMode=false;
+  const b=q("#btnProbe"); b.classList.remove("armed"); b.textContent="Sonda un punto";
+  e.currentTarget.classList.toggle("armed",markMode);
+  e.currentTarget.textContent=markMode?"Tocca il tuo posto":"Segna una fungaia";
+  if(markMode) toast("Tocca il punto della tua fungaia: resta su questo telefono.");
+};
+q("#btnLayer").onclick=e=>{
+  tipoTile=tipoTile==="scuro"?"rilievo":"scuro";
+  metti(tipoTile);
+  e.currentTarget.textContent=tipoTile==="scuro"?"Rilievo":"Scuro";
+};
+window.addEventListener("keydown",e=>{if(e.key==="Escape")q("#shClose").click()});
+
+initMap();
+carica(false);
+/* --- aggiornamento automatico ---------------------------------
+   Il service worker serve il codice con strategia rete-prima, quindi
+   una versione nuova arriva sempre. Quando il worker cambia, la pagina
+   si ricarica da sola una volta sola. */
+
+
+
+
+
+/* =========================================================
+   MUSHROOM v0.5.1 — ANTEPRIMA MAPPA, collegata alla mappa reale
+   ========================================================= */
+let __mpCurrent=null,__mpTimer=null;
+
+function mpHide(delay=100){
+  clearTimeout(__mpTimer);
+  __mpTimer=setTimeout(()=>{
+    const box=q("#mapPreview");
+    if(box){box.classList.remove("on");box.setAttribute("aria-hidden","true");}
+  },delay);
+}
+
+function mpShow(d,latlng){
+  clearTimeout(__mpTimer);
+  __mpCurrent=d;
+  const a=letturaPratica(d), i=PAST;
+  const rain=(d.daily?.precipitation_sum||[])
+    .slice(Math.max(0,i-16),Math.max(0,i-5))
+    .filter(Number.isFinite).reduce((x,y)=>x+y,0);
+  const tt=(d.daily?.temperature_2m_mean||[])
+    .slice(Math.max(0,i-9),i+1).filter(Number.isFinite);
+  const temp=tt.length?tt.reduce((x,y)=>x+y,0)/tt.length:null;
+
+  const content=q("#mapPreviewContent"), box=q("#mapPreview");
+  if(!content||!box)return;
+  content.innerHTML=`<div class="map-preview-k">Anteprima della zona</div>
+    <h3>${d.n}</h3>
+    <div class="mp-sub">${d.r||d.reg||""}${d.quota?" · "+d.quota+" m":""}</div>
+    <div class="mp-verdict">${a.title}</div>
+    <div class="mp-lead">${a.lead}</div>
+    <div class="mp-grid">
+      <div><span>Indice</span><b>${a.score}/100</b></div>
+      <div><span>Pioggia utile</span><b>${Math.round(rain)} mm</b></div>
+      <div><span>Temp. media</span><b>${temp==null?"—":temp.toFixed(1)+" °C"}</b></div>
+    </div>
+    <button class="mp-open" type="button" onclick="mpApriScheda()">Apri scheda completa</button>`;
+
+  box.classList.add("on");
+  box.setAttribute("aria-hidden","false");
+
+  if(matchMedia("(hover:hover) and (pointer:fine)").matches && map && latlng){
+    const mapEl=q("#map");
+    if(!mapEl)return;
+    const r=mapEl.getBoundingClientRect();
+    const pt=map.latLngToContainerPoint(latlng);
+    const w=330,h=240;
+    let left=r.left+pt.x+16, top=r.top+pt.y-70;
+    if(left+w>innerWidth-12) left=r.left+pt.x-w-16;
+    if(top+h>innerHeight-12) top=innerHeight-h-12;
+    if(top<12) top=12;
+    box.style.left=left+"px";
+    box.style.top=top+"px";
+  }
+}
+
+function mpApriScheda(){
+  if(!__mpCurrent)return;
+  const d=__mpCurrent;
+  mpHide(0);
+  apri(d);
+}
+
+function collegaAnteprima(m,d){
+  if(!m||!d)return;
+  m.on("mouseover",e=>{
+    if(matchMedia("(hover:hover) and (pointer:fine)").matches) mpShow(d,e.latlng);
+  });
+  m.on("mouseout",()=>{
+    if(matchMedia("(hover:hover) and (pointer:fine)").matches) mpHide(180);
+  });
+}
+
+/* =========================================================
+   MUSHROOM v0.5 — LETTURA PRATICA
+   ========================================================= */
+function toggleDatiTecnici(){
+  const d=q("#techDetails"),b=q("#techToggle"); if(!d||!b)return;
+  const on=d.classList.toggle("on");
+  b.textContent=on?"▴ Nascondi i dati tecnici":"▾ Voglio vedere i dati tecnici";
+}
+function letturaPratica(d){
+  const i=PAST, x=indiceGiorno(d.daily,i), score=x.val;
+  const rainTrigger=d.daily.precipitation_sum.slice(Math.max(0,i-16),Math.max(0,i-5)).filter(Number.isFinite).reduce((a,b)=>a+b,0);
+  const recent=d.daily.precipitation_sum.slice(Math.max(0,i-4),i+1).filter(Number.isFinite).reduce((a,b)=>a+b,0);
+  const temp=d.daily.temperature_2m_mean.slice(Math.max(0,i-9),i+1).filter(Number.isFinite);
+  const tm=temp.length?temp.reduce((a,b)=>a+b,0)/temp.length:null;
+  const bal=d.daily.precipitation_sum.slice(Math.max(0,i-19),i+1).reduce((a,v)=>a+(Number.isFinite(v)?v:0),0)-
+            d.daily.et0_fao_evapotranspiration.slice(Math.max(0,i-19),i+1).reduce((a,v)=>a+(Number.isFinite(v)?v:0),0);
+  let title,lead,when;
+  if(score>=72){title="🟢 IO ANDREI";lead="Il bosco ha una combinazione convincente di acqua e temperatura. Non significa che troverai funghi, ma oggi vale il viaggio.";when="Oggi / prossimi 2 giorni";}
+  else if(score>=52){title="🟠 FAREI UN GIRO MIRATO";lead="Ci sono segnali interessanti, ma non abbastanza uniformi per aspettarsi una buttata generale. Sceglierei i posti migliori e farei il giro corto.";when="Oggi, solo nelle fungaie migliori";}
+  else if(score>=32){title="🟠 ASPETTEREI ANCORA";lead=tm!=null&&tm>20?"L'acqua c'è o sta arrivando, ma il terreno e l'aria devono ancora perdere calore. Terrei d'occhio i prossimi giorni.":"Le condizioni stanno maturando, ma manca ancora un passaggio. Non partirei apposta oggi.";when="Ricontrolla fra 2–4 giorni";}
+  else {title="🔴 NON ANDREI APPOSTA";lead="Nel quadro attuale manca ancora almeno uno degli elementi importanti per una buona finestra di fruttificazione.";when="Aspetta e ricontrolla dopo un cambiamento meteo";}
+  let best={v:-1,i:i};
+  for(let k=i;k<d.daily.time.length;k++){const z=indiceGiorno(d.daily,k);if(z.val>best.v)best={v:z.val,i:k}}
+  const bd=new Date(d.daily.time[best.i]+"T12:00").toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"});
+  const water=rainTrigger>=35?["🌧️","ACQUA: ABBONDANTE",`${Math.round(rainTrigger)} mm sono caduti nella finestra che può preparare il terreno.`]:
+              rainTrigger>=15?["🌧️","ACQUA: DISCRETA",`${Math.round(rainTrigger)} mm nella finestra utile: segnale presente, non eccezionale.`]:
+              ["🌧️","ACQUA: POCA",`Solo ${Math.round(rainTrigger)} mm nella finestra utile.`];
+  const thermal=tm==null?["🌡️","TEMPERATURA: N.D.","Dato non disponibile."]:
+                tm>22?["🌡️","TEMPERATURA: ALTA",`${tm.toFixed(1)} °C medi: il raffreddamento può ancora aiutare.`]:
+                tm>=11&&tm<=19?["🌡️","TEMPERATURA: INTERESSANTE",`${tm.toFixed(1)} °C medi: fascia termica favorevole al modello.`]:
+                ["🌡️","TEMPERATURA: DA VALUTARE",`${tm.toFixed(1)} °C medi nel periodo.`];
+  const ground=bal>40?["💧","TERRENO: BEN RIFORNITO",`Il bilancio idrico è positivo (+${Math.round(bal)} mm).`]:
+               bal>0?["💧","TERRENO: IN EQUILIBRIO",`Bilancio idrico positivo di circa ${Math.round(bal)} mm.`]:
+               ["💧","TERRENO: IN DEFICIT",`Il bilancio idrico è negativo (${Math.round(bal)} mm).`];
+  const rec=recent>=15?["🍂","ULTIMI GIORNI: BAGNATI",`${Math.round(recent)} mm negli ultimi 5 giorni.`]:
+            recent>=4?["🍂","ULTIMI GIORNI: UMIDI",`${Math.round(recent)} mm negli ultimi 5 giorni.`]:
+            ["🍂","ULTIMI GIORNI: QUASI ASCIUTTI",`Solo ${Math.round(recent)} mm negli ultimi 5 giorni.`];
+  return {score,title,lead,when,bestDay:bd,bestScore:best.v,cards:[water,thermal,ground,rec]};
+}
+function renderDecisione(d){
+  const el=q("#decisionLayer");if(!el)return;
+  const a=letturaPratica(d);
+  el.innerHTML=`<div class="decision">
+    <div class="decision-k">${d.n} · vale la pena andare?</div>
+    <h3>${a.title}</h3><p class="decision-lead">${a.lead}</p>
+    <div class="decision-meta">
+      <div><span>Quando controllerei</span><b>${a.when}</b></div>
+      <div><span>Giorno migliore in vista</span><b>${a.bestDay} · indice ${a.bestScore}</b></div>
+    </div>
+    <div class="decision-k">Perché?</div>
+    <div class="whysimple">${a.cards.map(c=>`<div class="whycard"><div class="ico">${c[0]}</div><b>${c[1]}</b><p>${c[2]}</p></div>`).join("")}</div>
+    <div class="forestline"><div class="decision-k">La storia recente del bosco</div>
+      <div class="forestline-bar"><i class="forestline-now"></i></div>
+      <div class="forestline-labels"><span>piogge precedenti</span><span>terreno</span><span>oggi</span><span>prossimi giorni</span></div>
+    </div>
+    <div class="conclusion"><b>In parole semplici:</b> ${a.lead}</div>
+  </div>`;
+}
+function presetReport(days,btn){
+  document.querySelectorAll(".period-presets button").forEach(b=>b.classList.remove("active"));btn?.classList.add("active");
+  if(!days)return;
+  const d=CORRENTE;if(!d?.daily?.time?.length)return;
+  const end=Math.min(d.daily.time.length-1,PAST+7);
+  const start=Math.max(0,end-days+1);
+  q("#repFrom").value=d.daily.time[start]; q("#repTo").value=d.daily.time[end];
+  generaReportPeriodo();
+}
+/* =========================================================
+   MUSHROOM v0.4 — REPORT DEL BOSCO
+   Dati giornalieri + suolo da Open-Meteo. Nessun valore simulato.
+   ========================================================= */
+const SOIL_CACHE=new Map();
+
+function isoDateLocal(d){
+  const z=n=>String(n).padStart(2,"0");
+  return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate());
+}
+function inizializzaReportDate(d){
+  const a=q("#repFrom"), b=q("#repTo"); if(!a||!b||!d?.daily?.time?.length)return;
+  const dates=d.daily.time;
+  const oggi=PAST;
+  a.min=dates[0]; a.max=dates[dates.length-1];
+  b.min=dates[0]; b.max=dates[dates.length-1];
+  a.value=dates[Math.max(0,oggi-16)];
+  b.value=dates[Math.min(dates.length-1,oggi+7)];
+}
+
+async function datiSuolo(la,lo){
+  const key=la.toFixed(4)+","+lo.toFixed(4);
+  if(SOIL_CACHE.has(key)) return SOIL_CACHE.get(key);
+  const u=`https://api.open-meteo.com/v1/forecast?latitude=${la.toFixed(4)}&longitude=${lo.toFixed(4)}`+
+    `&hourly=soil_temperature_6cm,soil_moisture_3_to_9cm&past_days=${PAST}&forecast_days=${FUT}&timezone=Europe%2FRome`;
+  const r=await fetch(u); if(!r.ok)throw new Error("Dati suolo HTTP "+r.status);
+  const j=await r.json(), h=j.hourly||{};
+  const by={};
+  (h.time||[]).forEach((t,i)=>{
+    const day=t.slice(0,10); by[day]=by[day]||{t:[],m:[]};
+    const st=h.soil_temperature_6cm?.[i], sm=h.soil_moisture_3_to_9cm?.[i];
+    if(Number.isFinite(st))by[day].t.push(st);
+    if(Number.isFinite(sm))by[day].m.push(sm);
+  });
+  const avg=a=>a?.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+  const out={};
+  Object.entries(by).forEach(([k,v])=>out[k]={t:avg(v.t),m:avg(v.m)});
+  SOIL_CACHE.set(key,out); return out;
+}
+
+function giudizioPeriodo(avgScore,bestScore,rainTrigger,soilT,soilM){
+  if(avgScore>=72 || bestScore>=82)
+    return ["IO ANDREI","Il periodo contiene una finestra forte: l'innesco idrico e la temperatura stanno lavorando nella direzione giusta."];
+  if(avgScore>=52 || bestScore>=65)
+    return ["FAREI UN GIRO MIRATO","Ci sono segnali utili. Vale un giro corto nei versanti e negli habitat più favorevoli, senza aspettarsi una buttata uniforme."];
+  if(avgScore>=32)
+    return ["ASPETTEREI ANCORA","Il bosco sta accumulando condizioni, ma la finestra non è ancora convincente. Controlla di nuovo fra pochi giorni."];
+  return ["NON ANDREI APPOSTA","Nel periodo scelto mancano ancora uno o più elementi essenziali. Meglio attendere una nuova pioggia utile e il successivo assestamento termico."];
+}
+
+async function generaReportPeriodo(){
+  const d=CORRENTE, out=q("#reportBosco"); if(!d||!out)return;
+  const from=q("#repFrom").value, to=q("#repTo").value;
+  if(!from||!to||from>to){out.innerHTML='<div class="note warn">Intervallo date non valido.</div>';return}
+  const dates=d.daily.time;
+  let i0=dates.indexOf(from), i1=dates.indexOf(to);
+  if(i0<0||i1<0){out.innerHTML='<div class="note warn">Il periodo deve rientrare nei dati caricati: '+dates[0]+' → '+dates[dates.length-1]+'.</div>';return}
+  out.innerHTML='<p style="color:var(--nebbia);font-size:13px">Recupero temperatura e umidità del suolo…</p>';
+  let soil={}; let soilOk=true;
+  try{soil=await datiSuolo(d.la,d.lo)}catch(e){soilOk=false}
+  const rows=[];
+  for(let i=i0;i<=i1;i++){
+    const idx=indiceGiorno(d.daily,i), day=dates[i], so=soil[day]||{};
+    rows.push({
+      day,score:idx.val,rain:d.daily.precipitation_sum[i]??null,
+      air:d.daily.temperature_2m_mean[i]??null,et:d.daily.et0_fao_evapotranspiration[i]??null,
+      soilT:so.t??null,soilM:so.m??null,future:i>PAST
+    });
+  }
+  const num=(a,k)=>a.map(x=>x[k]).filter(Number.isFinite);
+  const av=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+  const totalRain=num(rows,"rain").reduce((a,b)=>a+b,0);
+  const avgAir=av(num(rows,"air")), avgSoil=av(num(rows,"soilT")), avgMoist=av(num(rows,"soilM"));
+  const avgScore=Math.round(av(num(rows,"score"))||0), best=rows.reduce((a,b)=>b.score>a.score?b:a,rows[0]);
+  // pioggia d'innesco rispetto all'ultimo giorno del periodo
+  const endIdx=i1;
+  const trig=d.daily.precipitation_sum.slice(Math.max(0,endIdx-16),Math.max(0,endIdx-5)).filter(Number.isFinite).reduce((a,b)=>a+b,0);
+  const [verdict,why]=giudizioPeriodo(avgScore,best.score,trig,avgSoil,avgMoist);
+  const moistureTxt=avgMoist!=null?(avgMoist*100).toFixed(1)+" %":"dato non disponibile";
+  const soilTxt=avgSoil!=null?avgSoil.toFixed(1)+" °C":"dato non disponibile";
+  const rowsHtml=rows.map(x=>`<tr class="${x.future?"future":""}">
+    <td>${new Date(x.day+"T12:00").toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit"})}</td>
+    <td><b>${x.score}</b></td>
+    <td>${x.rain==null?"—":x.rain.toFixed(1)}</td>
+    <td>${x.air==null?"—":x.air.toFixed(1)}</td>
+    <td>${x.soilT==null?"—":x.soilT.toFixed(1)}</td>
+    <td>${x.soilM==null?"—":(x.soilM*100).toFixed(1)+"%"}</td>
+    <td>${x.et==null?"—":x.et.toFixed(1)}</td>
+  </tr>`).join("");
+  out.innerHTML=`
+    <div class="report-head"><div class="report-score">${avgScore}/100</div><div>
+      <div class="report-verdict">${verdict}</div><div class="report-summary">${why}</div></div></div>
+    <div class="report-grid">
+      <div><b>${totalRain.toFixed(1)} mm</b><span>pioggia periodo</span></div>
+      <div><b>${trig.toFixed(1)} mm</b><span>pioggia innesco 6–16 gg</span></div>
+      <div><b>${avgAir==null?"—":avgAir.toFixed(1)+" °C"}</b><span>temperatura aria</span></div>
+      <div><b>${soilTxt}</b><span>temperatura suolo 6 cm</span></div>
+      <div><b>${moistureTxt}</b><span>umidità suolo 3–9 cm</span></div>
+      <div><b>${best.score}/100</b><span>picco ${new Date(best.day+"T12:00").toLocaleDateString("it-IT",{day:"numeric",month:"short"})}</span></div>
+      <div><b>${d.quota} m</b><span>quota</span></div>
+      <div><b>${rows.length} gg</b><span>periodo analizzato</span></div>
+    </div>
+    ${!soilOk?'<div class="note warn">La fonte dati del suolo non ha risposto: il report resta valido per pioggia, aria, ET0 e indice, senza inventare i valori mancanti.</div>':""}
+    <div class="note"><b>Lettura pratica.</b> Il dato più importante non è la pioggia di oggi ma quella che ha avuto il tempo di penetrare e precedere la fruttificazione. Il report mette quindi in relazione pioggia 6–16 giorni prima, bilancio idrico, temperatura, umidità del suolo e andamento dell'indice.</div>
+    <div class="reporttable"><table><thead><tr><th>Data</th><th>Indice</th><th>Pioggia mm</th><th>Aria °C</th><th>Suolo °C</th><th>Umidità suolo</th><th>ET0 mm</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
+    <div class="report-actions">
+      <button class="btn ghost" onclick="copiaReportBosco()">Copia sintesi</button>
+      <button class="btn ghost" onclick="window.print()">Stampa / PDF</button>
+    </div>`;
+  window.__ultimoReportBosco={zona:d.n,from,to,avgScore,best,totalRain,trig,avgAir,avgSoil,avgMoist,verdict,why};
+}
+async function copiaReportBosco(){
+  const r=window.__ultimoReportBosco;if(!r)return toast("Genera prima il report.");
+  const t=`MUSHROOM · Report del bosco
+Zona: ${r.zona}
+Periodo: ${r.from} → ${r.to}
+Giudizio: ${r.verdict}
+Indice medio: ${r.avgScore}/100
+Picco: ${r.best.score}/100 il ${r.best.day}
+Pioggia nel periodo: ${r.totalRain.toFixed(1)} mm
+Pioggia d'innesco 6–16 gg: ${r.trig.toFixed(1)} mm
+Temperatura aria media: ${r.avgAir==null?"n.d.":r.avgAir.toFixed(1)+" °C"}
+Temperatura suolo media: ${r.avgSoil==null?"n.d.":r.avgSoil.toFixed(1)+" °C"}
+Umidità suolo media: ${r.avgMoist==null?"n.d.":(r.avgMoist*100).toFixed(1)+" %"}
+${r.why}`;
+  try{await navigator.clipboard.writeText(t);toast("Sintesi copiata.");}catch(e){prompt("Copia il report:",t)}
+}
+
+/* =========================================================
+   MUSHROOM — onboarding e registrazione rapida.
+   Il motore, i 50 comprensori, le fungaie, la taratura, la luna
+   e le norme restano quelli originali di Sottobosco.
+   ========================================================= */
+const MUSHROOM_STORIE=[
+  {k:"IL TEMPO",t:"Non guardare il cielo di oggi. Guarda quello di dieci giorni fa.",x:"La pioggia di stamattina bagna le foglie. Quella che conta è scesa piano fino al micelio. MUSHROOM guarda indietro prima di dirti se vale la pena andare."},
+  {k:"IL METODO",t:"La luna non faceva crescere niente. Era il nostro calendario.",x:"Con la luna conti i giorni senza doverli scrivere. Qui la tradizione resta memoria, mentre l'indice usa pioggia, temperatura e bilancio idrico."},
+  {k:"IL RISPETTO",t:"I posti si lasciano meglio di come si sono trovati.",x:"Cammina piano. Prendi quelli che mangi. Le fungaie non sono un segreto da portarsi via: sono una cosa che si consegna. Questa app è il quaderno che non abbiamo mai tenuto."}
+];
+let mushroomStoryI=0;
+function mostraOnboard(){
+  const o=q("#mushOnboard"); if(!o || store.get("mushroom_onboarding_v1")) return;
+  o.classList.add("on");
+  renderOnboard();
+}
+function renderOnboard(){
+  const s=MUSHROOM_STORIE[mushroomStoryI];
+  q("#obK").textContent=s.k; q("#obTitle").textContent=s.t; q("#obText").textContent=s.x;
+  document.querySelectorAll(".onboard-dots i").forEach((x,i)=>x.classList.toggle("on",i===mushroomStoryI));
+  q("#obNext").textContent=mushroomStoryI===2?"Entra nel bosco":"Continua";
+}
+q("#obNext").onclick=()=>{
+  if(mushroomStoryI<2){mushroomStoryI++;renderOnboard();}
+  else{store.set("mushroom_onboarding_v1",true);q("#mushOnboard").classList.remove("on");}
+};
+
+function apriRegistroRapido(){
+  const a=mie();
+  if(!a.length){
+    if(confirm("Non hai ancora salvato una fungaia. Vuoi salvarne una con il GPS?")){
+      vaiScheda("mie"); salvaQui();
+    } else vaiScheda("mie");
+    return;
+  }
+  const sel=q("#quickPlace");
+  sel.innerHTML=a.map(f=>`<option value="${f.id}">${f.nome}</option>`).join("");
+  q("#quickModal").classList.add("on"); q("#quickModal").setAttribute("aria-hidden","false");
+}
+q("#quickFound").onclick=apriRegistroRapido;
+q("#quickClose").onclick=()=>{q("#quickModal").classList.remove("on");q("#quickModal").setAttribute("aria-hidden","true")};
+document.querySelectorAll("#quickModal [data-esito]").forEach(b=>b.onclick=async()=>{
+  const id=q("#quickPlace").value, esito=+b.dataset.esito;
+  q("#quickModal").classList.remove("on"); q("#quickModal").setAttribute("aria-hidden","true");
+  await registra(id,esito);
+  toast("Uscita registrata nel tuo quaderno.");
+});
+setTimeout(mostraOnboard,250);
+
+if("serviceWorker" in navigator){
+  let giaRicaricato=false;
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{
+    if(giaRicaricato) return;
+    giaRicaricato=true;
+    location.reload();
+  });
+  window.addEventListener("load",()=>{
+    navigator.serviceWorker.register("sw.js").then(reg=>{
+      reg.addEventListener("updatefound",()=>{
+        const nuovo=reg.installing;
+        if(!nuovo) return;
+        nuovo.addEventListener("statechange",()=>{
+          if(nuovo.state==="installed" && navigator.serviceWorker.controller){
+            toast("Nuova versione disponibile, aggiorno…");
+            nuovo.postMessage("attiva-subito");
+          }
+        });
+      });
+      const controlla=()=>reg.update().catch(()=>{});
+      document.addEventListener("visibilitychange",()=>{ if(!document.hidden) controlla(); });
+      setInterval(controlla, 30*60*1000);
+      controlla();
+    }).catch(()=>{});
+  });
+}
+
+document.addEventListener("DOMContentLoaded",()=>{
+  const c=q("#mapPreviewClose"), b=q("#mapPreview");
+  if(c)c.addEventListener("click",()=>mpHide(0));
+  if(b){
+    b.addEventListener("mouseenter",()=>clearTimeout(__mpTimer));
+    b.addEventListener("mouseleave",()=>mpHide(100));
+  }
+});
+
+</script>
+</body>
+</html>

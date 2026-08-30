@@ -1,0 +1,34 @@
+IL QUADERNO DI MICELIO — v0.2 FIX
+
+PER PROVARLO SUL MAC
+Metodo rapido:
+- apri index.html: la landing e il pulsante Apri MUSHROOM usano ora percorsi relativi.
+
+Metodo corretto PWA:
+- doppio clic su AVVIA-ANTEPRIMA-MAC.command
+- apri http://localhost:8080
+- lascia aperta la finestra Terminale durante la prova.
+
+PER PUBBLICARE
+Carica TUTTO il contenuto di questa cartella nella root del dominio.
+La struttura deve restare:
+/
+  index.html
+  app/
+    index.html
+    manifest.webmanifest
+    sw.js
+    norme.js
+    icons/...
+
+L'installazione PWA reale richiede HTTPS (oppure localhost per test).
+
+FIX APPLICATI
+- percorsi della landing non più assoluti;
+- collegamento landing -> app corretto;
+- anteprima mappa collegata a `map` e `apri`, cioè alle funzioni reali dell'app;
+- hover desktop sui cerchi;
+- primo tocco mobile = anteprima;
+- pulsante anteprima = apertura scheda completa;
+- service worker disattivato automaticamente su file://;
+- manifest con start_url/scope relativi.
